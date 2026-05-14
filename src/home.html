@@ -29,7 +29,7 @@ body{
 .page{
   max-width:640px;
   margin:0 auto;
-  padding:5rem 2rem 5rem;
+  padding:clamp(4rem, 12vw, 7rem) 2rem clamp(6rem, 14vw, 9rem);
   width:100%;
 }
 
@@ -37,23 +37,30 @@ strong,b{color:#fff;font-weight:700}
 a{color:#fff;font-weight:700;text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:.1em}
 a:hover{opacity:.85}
 
-/* Scroll-driven fade: elements start faded, reveal as they enter viewport */
+/* Scroll-driven fade: start nearly invisible, settle to full opacity */
 .f{
-  opacity:0;
-  transform:translateY(20px);
-  transition:opacity .8s ease, transform .8s ease;
+  opacity:0.06;
+  transform:translateY(28px);
+  transition:opacity 1.35s cubic-bezier(0.22, 1, 0.36, 1), transform 1.35s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change:opacity, transform;
 }
 .f.visible{
   opacity:1;
   transform:translateY(0);
+  will-change:auto;
 }
-/* Initial load: first few items animate in immediately */
-.f.instant{
-  animation:fadeIn .7s ease forwards;
+
+.f + .f{
+  margin-top:clamp(2.25rem, 5.5vw, 3.75rem);
 }
-@keyframes fadeIn{
-  from{opacity:0;transform:translateY(16px)}
-  to{opacity:1;transform:translateY(0)}
+.f.section-projects{
+  margin-top:clamp(4rem, 11vw, 7.5rem);
+}
+
+.page > .f:first-child{
+  opacity:1;
+  transform:none;
+  transition:none;
 }
 
 .photo{
@@ -65,9 +72,33 @@ a:hover{opacity:.85}
 
 p+p{margin-top:1.3em}
 
+.nav-wrap{
+  margin-top:clamp(2rem, 5vw, 3rem);
+  margin-bottom:clamp(2rem, 5vw, 3rem);
+}
+.nav-primary-row{
+  margin-bottom:1.25rem;
+}
+.nav-primary-row a{
+  display:inline-block;
+  font-family:'Inter',sans-serif;
+  font-size:clamp(0.95rem, 2.2vw, 1.05rem);
+  font-weight:600;
+  letter-spacing:0.02em;
+  color:rgba(255,255,255,.92);
+  text-decoration:none;
+  border-bottom:1px solid rgba(255,255,255,.35);
+  padding-bottom:0.2rem;
+  transition:color .2s, border-color .2s, opacity .2s;
+}
+.nav-primary-row a:hover{
+  color:#fff;
+  border-bottom-color:rgba(255,255,255,.75);
+  opacity:1;
+}
+
 .nav{
-  display:flex;flex-wrap:wrap;gap:1.2rem;
-  margin-top:2.5rem;margin-bottom:4rem;
+  display:flex;flex-wrap:wrap;gap:1.2rem 1.5rem;
   font-family:'Inter',sans-serif;
   font-size:.78rem;font-weight:500;
   letter-spacing:.01em;
@@ -85,10 +116,13 @@ p+p{margin-top:1.3em}
   text-transform:uppercase;
   letter-spacing:.1em;
   color:rgba(255,255,255,.3);
-  margin-bottom:1.2rem;
+  margin-bottom:clamp(1rem, 2.5vw, 1.5rem);
+}
+.label-spaced{
+  margin-top:clamp(0.5rem, 2vw, 1rem);
 }
 
-.list{margin-bottom:3.5rem}
+.list{margin-bottom:clamp(2.5rem, 6vw, 4rem)}
 .list a{
   display:block;
   padding:.6rem 0;
@@ -111,7 +145,7 @@ p+p{margin-top:1.3em}
 hr{
   border:none;
   border-top:1px solid rgba(255,255,255,.07);
-  margin:3rem 0;
+  margin:clamp(3.5rem, 9vw, 6rem) 0 clamp(2.5rem, 6vw, 4rem);
 }
 
 .scripture{
@@ -142,12 +176,16 @@ hr{
   </div>
 
   <div class="f">
-    <div class="nav">
-      <a href="https://x.com/carsonjarvisai">Agent on X</a>
-      <a href="https://www.linkedin.com/in/batsirai-chada">LinkedIn</a>
-      <a href="https://open.spotify.com/artist/4Lm4Yc59M7v0qXP77AucZD?si=3tT_KSv-S1e3DzahyniA5A">Spotify</a>
-      <a href="https://letters.batsirai.com">Newsletter</a>
-      <a href="mailto:batsirai@adorostudios.com">Email</a>
+    <div class="nav-wrap">
+      <div class="nav-primary-row">
+        <a href="https://x.com/batsirai">@batsirai on X</a>
+      </div>
+      <div class="nav">
+        <a href="https://www.linkedin.com/in/batsirai-chada">LinkedIn</a>
+        <a href="https://open.spotify.com/artist/4Lm4Yc59M7v0qXP77AucZD?si=3tT_KSv-S1e3DzahyniA5A">Spotify</a>
+        <a href="https://letters.batsirai.com">Newsletter</a>
+        <a href="mailto:batsirai@adorostudios.com">Email</a>
+      </div>
     </div>
   </div>
 
@@ -155,7 +193,7 @@ hr{
     <p>If you're drawn to <strong>AI</strong>, <strong>worship</strong>, <strong>identity</strong>, and what it means to <strong>trust God</strong> in the middle of ordinary life — get on <a href="https://letters.batsirai.com">my newsletter</a>. Once a week I send one short note: something to make you pause, wonder <em>what if?</em> — and imagine that question <em>with</em> God.</p>
   </div>
 
-  <div class="f">
+  <div class="f section-projects">
     <div class="label">Projects</div>
     <div class="list">
       <a href="https://open.spotify.com/artist/4Lm4Yc59M7v0qXP77AucZD?si=3tT_KSv-S1e3DzahyniA5A">
@@ -186,9 +224,22 @@ hr{
   </div>
 
   <div class="f">
+    <div class="label label-spaced">Agent</div>
+    <div class="list">
+      <a href="https://hermes-agent.nousresearch.com/">
+        <strong>Hermes Agent</strong>
+        <div class="desc">Self-improving AI agent — how I run ops</div>
+      </a>
+      <a href="https://x.com/carsonjarvisai">
+        <strong>Carson on X</strong>
+        <div class="desc">Updates and experiments from my AI agent</div>
+      </a>
+    </div>
+  </div>
+
+  <div class="f">
     <div class="label">Tools I Use</div>
     <div class="list">
-      <a href="https://hermes-agent.nousresearch.com/"><strong>Hermes Agent</strong> <div class="desc">Self-improving AI agent — how I run ops</div></a>
       <a href="https://buffer.com/resources/buffer-diaries-batsirai/"><strong>Buffer</strong> <div class="desc">Social scheduling — growth PM on the team; <em>Buffer Diaries</em> profile</div></a>
       <a href="https://www.cloudflare.com"><strong>Cloudflare</strong> <div class="desc">DNS, Workers, edge hosting — everything runs here</div></a>
       <a href="https://convex.dev"><strong>Convex</strong> <div class="desc">Real-time backend</div></a>
@@ -209,17 +260,6 @@ hr{
 <script>
 (function(){
   const els = document.querySelectorAll('.f');
-  
-  // First 5 items: animate in immediately on load with stagger
-  els.forEach((el, i) => {
-    if (i < 5) {
-      el.style.transitionDelay = (i * .15) + 's';
-      // Small delay then mark visible
-      setTimeout(() => el.classList.add('visible'), 50);
-    }
-  });
-  
-  // Rest: use IntersectionObserver for scroll-triggered fade
   const observer = new IntersectionObserver((entries) => {
     entries.forEach(entry => {
       if (entry.isIntersecting) {
@@ -228,12 +268,15 @@ hr{
       }
     });
   }, {
-    threshold: 0.15,
-    rootMargin: '0px 0px -60px 0px'
+    threshold: 0.08,
+    rootMargin: '0px 0px -8% 0px'
   });
-  
   els.forEach((el, i) => {
-    if (i >= 5) observer.observe(el);
+    if (i === 0) {
+      el.classList.add('visible');
+      return;
+    }
+    observer.observe(el);
   });
 })();
 </script>
