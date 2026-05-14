@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Batsirai Chada</title>
+<meta name="description" content="Father, husband, builder. Making Already Loved, WorshipOS, and Adoro Studios.">
+<meta property="og:title" content="Batsirai Chada">
+<meta property="og:description" content="Building things that help people see they're already loved.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,700;1,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+
+body{
+  background:#0064e6;
+  color:rgba(255,255,255,.7);
+  font-family:'Lora',Georgia,serif;
+  font-size:clamp(1.25rem,2.2vw,1.5rem);
+  line-height:1.4;
+  letter-spacing:-.01em;
+  -webkit-font-smoothing:antialiased;
+  -moz-osx-font-smoothing:grayscale;
+  min-height:100vh;
+}
+
+::selection{background:rgba(255,255,255,.2)}
+
+.page{
+  max-width:640px;
+  margin:0 auto;
+  padding:5rem 2rem 5rem;
+  width:100%;
+}
+
+strong,b{color:#fff;font-weight:700}
+a{color:#fff;font-weight:700;text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:.1em}
+a:hover{opacity:.85}
+
+/* Scroll-driven fade: elements start faded, reveal as they enter viewport */
+.f{
+  opacity:0;
+  transform:translateY(20px);
+  transition:opacity .8s ease, transform .8s ease;
+}
+.f.visible{
+  opacity:1;
+  transform:translateY(0);
+}
+/* Initial load: first few items animate in immediately */
+.f.instant{
+  animation:fadeIn .7s ease forwards;
+}
+@keyframes fadeIn{
+  from{opacity:0;transform:translateY(16px)}
+  to{opacity:1;transform:translateY(0)}
+}
+
+.photo{
+  width:64px;height:64px;border-radius:50%;
+  object-fit:cover;object-position:center top;
+  margin-bottom:2.5rem;
+  opacity:.9;
+}
+
+p+p{margin-top:1.3em}
+
+.nav{
+  display:flex;flex-wrap:wrap;gap:1.2rem;
+  margin-top:2.5rem;margin-bottom:4rem;
+  font-family:'Inter',sans-serif;
+  font-size:.78rem;font-weight:500;
+  letter-spacing:.01em;
+}
+.nav a{
+  color:rgba(255,255,255,.55);
+  text-decoration:none;font-weight:500;
+  transition:color .2s;
+}
+.nav a:hover{color:#fff}
+
+.label{
+  font-family:'Inter',sans-serif;
+  font-size:.65rem;font-weight:600;
+  text-transform:uppercase;
+  letter-spacing:.1em;
+  color:rgba(255,255,255,.3);
+  margin-bottom:1.2rem;
+}
+
+.list{margin-bottom:3.5rem}
+.list a{
+  display:block;
+  padding:.6rem 0;
+  text-decoration:none;
+  color:rgba(255,255,255,.7);
+  font-weight:400;
+  border-bottom:1px solid rgba(255,255,255,.07);
+  transition:color .15s, padding-left .15s;
+}
+.list a:hover{color:#fff;padding-left:.4rem}
+.list a strong{font-weight:700}
+.list .desc{
+  font-family:'Inter',sans-serif;
+  font-size:.7rem;
+  color:rgba(255,255,255,.35);
+  margin-top:.15rem;
+  letter-spacing:.005em;
+}
+
+hr{
+  border:none;
+  border-top:1px solid rgba(255,255,255,.07);
+  margin:3rem 0;
+}
+
+.scripture{
+  font-style:italic;
+  color:rgba(255,255,255,.3);
+  font-size:.9em;
+}
+.scripture cite{
+  display:block;font-style:normal;margin-top:.3rem;
+  font-family:'Inter',sans-serif;font-size:.65rem;
+  letter-spacing:.02em;color:rgba(255,255,255,.2);
+}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="f">
+    <img src="/photo.jpg" alt="Batsirai Chada" class="photo">
+  </div>
+
+  <div class="f">
+    <p>I'm <strong>Batsirai Chada</strong>. Father, husband, builder.</p>
+  </div>
+
+  <div class="f">
+    <p>I make things that help people see they're <strong>already loved</strong>. Right now that's a <a href="https://alreadylovedkids.com">children's book</a> that speaks beloved identity over kids, an <a href="https://worshipos.com">AI assistant for church leaders</a>, and the <a href="https://adorostudios.com">studio</a> behind it all.</p>
+  </div>
+
+  <div class="f">
+    <div class="nav">
+      <a href="https://x.com/batsirai">Twitter</a>
+      <a href="https://linkedin.com/in/batsirai-chada">LinkedIn</a>
+      <a href="https://letters.batsirai.com">Newsletter</a>
+      <a href="mailto:batsirai@adorostudios.com">Email</a>
+    </div>
+  </div>
+
+  <div class="f">
+    <div class="label">Projects</div>
+    <div class="list">
+      <a href="https://alreadylovedkids.com">
+        <strong>Already Loved</strong>
+        <div class="desc">Personalized children's books that speak beloved identity</div>
+      </a>
+      <a href="https://worshipos.com">
+        <strong>WorshipOS</strong>
+        <div class="desc">AI assistant for church leaders, connected to Planning Center</div>
+      </a>
+      <a href="https://adorostudios.com">
+        <strong>Adoro Studios</strong>
+        <div class="desc">The lab behind it all</div>
+      </a>
+      <a href="https://skills.church">
+        <strong>Skills.church</strong>
+        <div class="desc">AI skills for ministry</div>
+      </a>
+    </div>
+  </div>
+
+  <div class="f">
+    <div class="label">Tools I Use</div>
+    <div class="list">
+      <a href="https://openclaw.ai"><strong>OpenClaw</strong> <div class="desc">AI agent platform — runs my entire operation</div></a>
+      <a href="https://dub.sh/buffer-aff"><strong>Buffer</strong> <div class="desc">Social media scheduling across all channels</div></a>
+      <a href="https://www.cloudflare.com"><strong>Cloudflare</strong> <div class="desc">DNS, Workers, edge hosting — everything runs here</div></a>
+      <a href="https://convex.dev"><strong>Convex</strong> <div class="desc">Real-time backend</div></a>
+      <a href="https://elevenlabs.io"><strong>ElevenLabs</strong> <div class="desc">AI voice generation</div></a>
+      <a href="https://fal.ai"><strong>fal.ai</strong> <div class="desc">AI image generation — powers the book pages</div></a>
+    </div>
+  </div>
+
+  <div class="f">
+    <hr>
+    <div class="scripture">
+      "I remain confident of this: I will see the goodness of the Lord in the land of the living."
+      <cite>Psalm 27:13</cite>
+    </div>
+  </div>
+
+</div>
+<script>
+(function(){
+  const els = document.querySelectorAll('.f');
+  
+  // First 4 items: animate in immediately on load with stagger
+  els.forEach((el, i) => {
+    if (i < 4) {
+      el.style.transitionDelay = (i * .15) + 's';
+      // Small delay then mark visible
+      setTimeout(() => el.classList.add('visible'), 50);
+    }
+  });
+  
+  // Rest: use IntersectionObserver for scroll-triggered fade
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('visible');
+        observer.unobserve(entry.target);
+      }
+    });
+  }, {
+    threshold: 0.15,
+    rootMargin: '0px 0px -60px 0px'
+  });
+  
+  els.forEach((el, i) => {
+    if (i >= 4) observer.observe(el);
+  });
+})();
+</script>
+</div>
+</body>
+</html>

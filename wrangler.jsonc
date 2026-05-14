@@ -1,0 +1,31 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "batsirai-site",
+	"main": "src/index.ts",
+	"compatibility_date": "2025-05-14",
+	"observability": {
+		"enabled": true
+	},
+	"routes": [
+		{
+			"pattern": "batsirai.com/*",
+			"zone_id": "fad052b35a0e0a01e7b8c3b8d96e48d1"
+		},
+		{
+			"pattern": "www.batsirai.com/*",
+			"zone_id": "fad052b35a0e0a01e7b8c3b8d96e48d1"
+		}
+	],
+	"rules": [
+		{
+			"type": "Text",
+			"globs": ["**/*.html"],
+			"fallthrough": true
+		},
+		{
+			"type": "Data",
+			"globs": ["**/*.jpg"],
+			"fallthrough": true
+		}
+	]
+}
