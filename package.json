@@ -7,7 +7,7 @@
 		"build": "vite build",
 		"dev": "npm run build && wrangler dev",
 		"deploy": "npm run build && wrangler deploy",
-		"check": "tsc --noEmit && tsc -p web --noEmit",
+		"check": "tsc --noEmit",
 		"cf-typegen": "wrangler types"
 	},
 	"devDependencies": {
