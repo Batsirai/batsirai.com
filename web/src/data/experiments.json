@@ -1,0 +1,32 @@
+[
+	{
+		"experiment": "Buffer onboarding redesign",
+		"hypothesis": "Improved flow lifts activation",
+		"outcome": "+11% activation, +5% MAU",
+		"learning": "Sequencing matters more than copy"
+	},
+	{
+		"experiment": "Buffer VAT at checkout",
+		"hypothesis": "Can collect VAT without killing conversion",
+		"outcome": "$2M back-VAT saved, no conversion hit",
+		"learning": "Pricing changes need EU-specific copy"
+	},
+	{
+		"experiment": "Buffer pricing migration",
+		"hypothesis": "Self-serve migration can move users to new plans",
+		"outcome": "16% of $1.5M MRR migrated",
+		"learning": "Migration UX = retention work"
+	},
+	{
+		"experiment": "Overflow catalog UX",
+		"hypothesis": "Better internal tooling cuts ops time",
+		"outcome": "80% reduction in catalog mgmt time",
+		"learning": "Internal tools have outsized ROI"
+	},
+	{
+		"experiment": "Already Loved private beta",
+		"hypothesis": "Personalized preview drives early conversion",
+		"outcome": "First paid users",
+		"learning": "Preview is the activation event"
+	}
+]

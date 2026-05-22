@@ -1,0 +1,58 @@
+[
+	{
+		"year": "2010–present",
+		"title": "VCG / Guarantee VC",
+		"type": "B2B & B2C commerce portals",
+		"impact": "$5M+ in annual revenue supported",
+		"tag": "Built",
+		"detail": "Built and ran commerce portals supporting $5M+ in annual revenue across B2B and B2C channels."
+	},
+	{
+		"year": "2013–2019",
+		"title": "The Overflow",
+		"type": "Genre-specific music streaming",
+		"impact": "0 → 180,000 users with no paid marketing",
+		"tag": "Led product",
+		"detail": "Led product from zero to 180k users with no paid marketing; also rebuilt internal catalog tooling that cut ops time 80%."
+	},
+	{
+		"year": "2015–2022",
+		"title": "Quickstaff",
+		"type": "Bootstrapped B2B SaaS",
+		"impact": "Profitable, 4.7★ Capterra, sold",
+		"tag": "Founded + exited",
+		"detail": "Founded a bootstrapped B2B SaaS, grew it to profitability with a 4.7★ Capterra rating, and sold it in 2022."
+	},
+	{
+		"year": "2019–2023",
+		"title": "Maverick City Music",
+		"type": "Digital ecosystem + ecommerce",
+		"impact": "Built digital infrastructure during 10k → 2M+ YouTube growth",
+		"tag": "Built",
+		"detail": "Built the digital infrastructure and ecommerce that scaled alongside 10k → 2M+ YouTube subscribers."
+	},
+	{
+		"year": "2022–2023",
+		"title": "Buffer",
+		"type": "PLG / freemium growth",
+		"impact": "150k+ MAUs, +11% activation, $2M VAT saved",
+		"tag": "Led growth PM",
+		"detail": "Led growth PM work on freemium funnels: +11% activation, 150k+ MAUs touched, and $2M in back-VAT recovered at checkout."
+	},
+	{
+		"year": "2023",
+		"title": "Cowriter",
+		"type": "GPT-powered songwriting app",
+		"impact": "Shipped early LLM product, learned prompt engineering hands-on",
+		"tag": "Experiment",
+		"detail": "Shipped an early GPT-powered songwriting app and learned prompt engineering hands-on, before LLM tooling matured."
+	},
+	{
+		"year": "2024–present",
+		"title": "Already Loved",
+		"type": "AI-personalized children's books",
+		"impact": "Built end-to-end, beta sales, real users",
+		"tag": "Founded + shipping",
+		"detail": "Building AI-personalized children's books end-to-end — live beta with real paying users. Currently shipping."
+	}
+]

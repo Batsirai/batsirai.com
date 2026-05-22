@@ -6,6 +6,10 @@
 	"observability": {
 		"enabled": true
 	},
+	"assets": {
+		"directory": "./dist",
+		"binding": "ASSETS"
+	},
 	"routes": [
 		{
 			"pattern": "batsirai.com/*",
