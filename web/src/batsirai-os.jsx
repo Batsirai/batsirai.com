@@ -1905,6 +1905,32 @@ function LiveLoop() {
     { who: "posthog.com referrer", what: "opened the page" },
   ];
   React.useEffect(() => { window.posthog?.capture('live_widget_loaded'); }, []);
+
+  // Live numbers from the Worker /api/stats proxy. Falls back silently to the
+  // rolling mock above if the proxy is pending (no PH_PERSONAL_KEY) or errors.
+  const [stats, setStats] = React.useState(null);
+  React.useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      try {
+        const r = await fetch('/posthog/api/stats');
+        if (!r.ok) return;
+        const j = await r.json();
+        if (!cancelled && j && j.status === 'ok') setStats(j);
+      } catch {}
+    }
+    load();
+    const id = setInterval(load, 30000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, []);
+  const flagOf = (cc) => {
+    if (!cc || cc.length !== 2) return '🌐';
+    const A = 0x1F1E6;
+    return String.fromCodePoint(A + cc.charCodeAt(0) - 65) +
+           String.fromCodePoint(A + cc.charCodeAt(1) - 65);
+  };
+  const fmtK = (n) =>
+    n == null ? null : n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(n);
   React.useEffect(() => {
     const id = setInterval(() => {
       setTick(t => t + 1);
@@ -1925,12 +1951,12 @@ function LiveLoop() {
     <div className="live-grid">
       <div>
         <div className="lv-head"><span className="live-dot"></span> live · last 5 min</div>
-        <div className="lv-num signal">{live}</div>
+        <div className="lv-num signal">{stats?.live ?? live}</div>
         <div className="lv-sub">visitors active right now</div>
         <div className="lv-spark">
           <Sparkline data={sparkData} color="#B8442D" />
         </div>
-        <div className="lv-sub">this week · 432 unique · 1.2k events</div>
+        <div className="lv-sub">this week · {stats?.weekUnique ?? 432} unique · {fmtK(stats?.weekEvents) ?? '1.2k'} events</div>
         <div className="lv-events">
           {events.map((e, i) => (
             <div className="lv-event" key={e.who + e.what + i + tick + i}>
@@ -1943,26 +1969,47 @@ function LiveLoop() {
       <div>
         <div className="lv-head">top referrers · this week</div>
         <ul className="lv-refs">
-          <li><span>posthog.com</span><span className="ref-bar"><i style={{width: '74%'}}></i></span><span>38%</span></li>
-          <li><span>linkedin.com</span><span className="ref-bar"><i style={{width: '52%'}}></i></span><span>27%</span></li>
-          <li><span>direct</span><span className="ref-bar"><i style={{width: '38%'}}></i></span><span>20%</span></li>
-          <li><span>news.ycombinator</span><span className="ref-bar"><i style={{width: '18%'}}></i></span><span>9%</span></li>
-          <li><span>twitter.com</span><span className="ref-bar"><i style={{width: '12%'}}></i></span><span>6%</span></li>
+          {(() => {
+            const refs = stats?.referrers?.length ? stats.referrers : [
+              { host: 'posthog.com', count: 38 },
+              { host: 'linkedin.com', count: 27 },
+              { host: 'direct', count: 20 },
+              { host: 'news.ycombinator', count: 9 },
+              { host: 'twitter.com', count: 6 },
+            ];
+            const total = refs.reduce((s, r) => s + r.count, 0) || 1;
+            const max = Math.max(...refs.map(r => r.count));
+            return refs.map((r, i) => {
+              const pct = Math.round((r.count / total) * 100);
+              const w = Math.max(8, Math.round((r.count / max) * 100));
+              return (
+                <li key={r.host + i}>
+                  <span>{r.host}</span>
+                  <span className="ref-bar"><i style={{ width: w + '%' }}></i></span>
+                  <span>{pct}%</span>
+                </li>
+              );
+            });
+          })()}
         </ul>
       </div>
       <div>
         <div className="lv-head">recent locations</div>
         <div className="lv-cities">
-          <span>🇬🇧 cambridge</span>
-          <span>🇺🇸 san francisco</span>
-          <span>🇩🇪 berlin</span>
-          <span>🇿🇦 cape town</span>
-          <span>🇬🇧 london</span>
-          <span>🇺🇸 brooklyn</span>
-          <span>🇳🇱 amsterdam</span>
-          <span>🇨🇦 toronto</span>
-          <span>🇮🇪 dublin</span>
-          <span>🇦🇺 melbourne</span>
+          {(stats?.locations?.length ? stats.locations : [
+            { country: 'GB', city: 'cambridge' },
+            { country: 'US', city: 'san francisco' },
+            { country: 'DE', city: 'berlin' },
+            { country: 'ZA', city: 'cape town' },
+            { country: 'GB', city: 'london' },
+            { country: 'US', city: 'brooklyn' },
+            { country: 'NL', city: 'amsterdam' },
+            { country: 'CA', city: 'toronto' },
+            { country: 'IE', city: 'dublin' },
+            { country: 'AU', city: 'melbourne' },
+          ]).slice(0, 12).map((l, i) => (
+            <span key={i}>{flagOf(l.country)} {(l.city || '').toLowerCase()}</span>
+          ))}
         </div>
         <div className="lv-head" style={{marginTop: 22}}>scroll depth · this page</div>
         <ul className="lv-refs">
