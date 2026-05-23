@@ -1658,11 +1658,42 @@ function VentureLink({ id, children, className = '' }) {
   );
 }
 
+function VentureCoverLightbox({ src, alt, onClose }) {
+  React.useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        onClose();
+      }
+    };
+    document.addEventListener('keydown', onKey, true);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', onKey, true);
+      document.body.style.overflow = prev;
+    };
+  }, [onClose]);
+
+  return createPortal(
+    <div className="cover-lb-back" onClick={onClose} role="dialog" aria-modal="true" aria-label="Book cover preview">
+      <figure className="cover-lb" onClick={(e) => e.stopPropagation()}>
+        <button type="button" className="cover-lb-close" onClick={onClose} aria-label="Close cover preview">×</button>
+        <img src={src} alt={alt} width={680} height={680} decoding="async" />
+        <figcaption>sample personalised cover</figcaption>
+      </figure>
+    </div>,
+    document.body
+  );
+}
+
 function VenturePopover({ venture, getAnchor, onClose, onScheduleClose, onCancelClose }) {
   const app = useApp();
   const popRef = React.useRef(null);
   const [layout, setLayout] = React.useState({ top: 0, left: 0, place: 'right' });
+  const [coverOpen, setCoverOpen] = React.useState(false);
   const milestoneIdx = ventureMilestoneIndex(venture);
+  const coverAlt = venture.coverAlt || `${venture.name} sample book cover`;
 
   const relayout = React.useCallback(() => {
     const anchor = getAnchor?.();
@@ -1687,10 +1718,12 @@ function VenturePopover({ venture, getAnchor, onClose, onScheduleClose, onCancel
   }, [relayout]);
 
   React.useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    const onKey = (e) => {
+      if (e.key === 'Escape' && !coverOpen) onClose();
+    };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  }, [onClose, coverOpen]);
 
   function goTimeline() {
     onClose();
@@ -1700,7 +1733,7 @@ function VenturePopover({ venture, getAnchor, onClose, onScheduleClose, onCancel
     }
   }
 
-  return createPortal(
+  const popover = createPortal(
     <div
       ref={popRef}
       className={`ventm-pop ventm-pop--${layout.place}`}
@@ -1721,19 +1754,6 @@ function VenturePopover({ venture, getAnchor, onClose, onScheduleClose, onCancel
           <button className="kpim-close" onClick={onClose}>×</button>
         </div>
         <div className="kpim-body ventm-body">
-          {venture.coverImage && (
-            <figure className="ventm-cover">
-              <img
-                src={venture.coverImage}
-                alt={venture.coverAlt || `${venture.name} sample book cover`}
-                width={340}
-                height={340}
-                loading="lazy"
-                decoding="async"
-              />
-              <figcaption>sample personalised cover</figcaption>
-            </figure>
-          )}
           <div className="ventm-status">{venture.status}</div>
           <h3 className="ventm-name" id="ventm-title">{venture.name}</h3>
           <div className="ventm-meta">
@@ -1747,6 +1767,27 @@ function VenturePopover({ venture, getAnchor, onClose, onScheduleClose, onCancel
             <span className="ventm-stack-label">stack</span>
             <span>{venture.stack}</span>
           </div>
+          {venture.coverImage && (
+            <button
+              type="button"
+              className="ventm-cover-thumb"
+              onClick={() => {
+                setCoverOpen(true);
+                capturePh('venture_cover_open', { id: venture.id });
+              }}
+            >
+              <img
+                src={venture.coverImage}
+                alt=""
+                width={72}
+                height={72}
+                loading="lazy"
+                decoding="async"
+                aria-hidden="true"
+              />
+              <span className="ventm-cover-thumb-label">view sample cover</span>
+            </button>
+          )}
           {venture.press && (
             <blockquote className="ventm-press">
               <p className="ventm-press-quote">&ldquo;{venture.press.quote}&rdquo;</p>
@@ -1807,6 +1848,19 @@ function VenturePopover({ venture, getAnchor, onClose, onScheduleClose, onCancel
       </div>
     </div>,
     document.body
+  );
+
+  return (
+    <>
+      {popover}
+      {coverOpen && venture.coverImage && (
+        <VentureCoverLightbox
+          src={venture.coverImage}
+          alt={coverAlt}
+          onClose={() => setCoverOpen(false)}
+        />
+      )}
+    </>
   );
 }
 
@@ -2764,7 +2818,7 @@ function PostHogPowered() {
     { label: 'session replay',        meta: 'recording you right now · canvas + console' },
     { label: 'heatmaps',              meta: 'auto, via autocapture' },
     { label: 'surveys',               meta: '1 active · popover on /posthog · 8s delay' },
-    { label: 'feature flags',         meta: 'dashboard-theme · multivariate · 80/10/10' },
+    { label: 'feature flags',         meta: 'available · theme stays PostHog until you switch' },
     { label: 'hogql via worker',      meta: 'this widget runs SQL against your PostHog' },
     { label: 'custom events',         meta: LIVE_CUSTOM_EVENTS.join(' · ') },
     { label: 'person profiles + geoip', meta: stats?.locations?.length ? `${stats.locations.length} recent cities, enriched` : 'city · country · referrer' },
@@ -3291,23 +3345,6 @@ function App() {
     // theme attribute on body for any conditional CSS
     document.body.dataset.theme = t.palette;
   }, [t.palette, t.monoEverywhere]);
-
-  // PostHog feature flag `dashboard-theme` overrides the starting palette
-  // (multivariate: posthog 80% / apple 10% / terminal 10%). Applied once on
-  // first available value; user-triggered theme switches afterward win.
-  const flagApplied = React.useRef(false);
-  React.useEffect(() => {
-    function apply(v) {
-      if (!v || flagApplied.current) return;
-      if (!['posthog','apple','terminal'].includes(v)) return;
-      flagApplied.current = true;
-      setTweak('palette', v);
-    }
-    if (typeof window !== 'undefined' && window.__ph_theme) apply(window.__ph_theme);
-    const h = (e) => apply(e.detail);
-    window.addEventListener('ph-theme', h);
-    return () => window.removeEventListener('ph-theme', h);
-  }, []);
 
   const openPalette = React.useCallback((source = 'shortcut') => {
     markCmdkDiscovered();

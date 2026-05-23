@@ -893,31 +893,97 @@ body {
 
 .ventm { max-width: 420px; }
 .ventm-body { padding-top: 18px !important; }
-.ventm-cover {
-  margin: 0 0 14px;
-  text-align: center;
+.ventm-cover-thumb {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin: 12px 0 0;
+  padding: 6px 10px 6px 6px;
+  background: var(--panel-2);
+  border: var(--border-soft);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
 }
-.ventm-cover img {
+.ventm-cover-thumb:hover {
+  box-shadow: var(--shadow-soft);
+  transform: translateY(-1px);
+}
+.ventm-cover-thumb:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
+.ventm-cover-thumb img {
   display: block;
-  width: min(200px, 52%);
-  margin: 0 auto;
-  border-radius: 6px;
-  box-shadow:
-    0 1px 0 rgba(0, 0, 0, 0.06),
-    0 8px 24px rgba(0, 0, 0, 0.12),
-    0 0 0 1px rgba(0, 0, 0, 0.04);
+  width: 56px;
+  height: 56px;
+  object-fit: cover;
+  border-radius: 4px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.06);
 }
-.ventm-cover figcaption {
-  margin-top: 8px;
+.ventm-cover-thumb-label {
   font-family: var(--mono);
   font-size: 10px;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--muted);
 }
-.ventm-pop:has(.ventm-cover) {
-  width: min(400px, calc(100vw - 24px));
-  max-height: min(520px, calc(100vh - 24px));
+
+.cover-lb-back {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  background: rgba(20, 20, 20, 0.55);
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  animation: fadeIn 0.14s ease-out;
+}
+.cover-lb {
+  position: relative;
+  margin: 0;
+  width: min(66vw, 520px);
+  max-width: 100%;
+  text-align: center;
+  animation: modalIn 0.18s cubic-bezier(.4, .0, .2, 1.4);
+}
+.cover-lb img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 8px;
+  box-shadow:
+    0 12px 40px rgba(0, 0, 0, 0.35),
+    0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+.cover-lb figcaption {
+  margin-top: 12px;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.72);
+}
+.cover-lb-close {
+  position: absolute;
+  top: -12px;
+  right: -12px;
+  width: 32px;
+  height: 32px;
+  border: var(--border);
+  border-radius: 50%;
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: var(--shadow-soft);
+}
+.cover-lb-close:hover {
+  background: var(--panel-2);
 }
 .ventm-status {
   display: inline-block;

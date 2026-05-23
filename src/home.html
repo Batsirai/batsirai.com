@@ -196,7 +196,11 @@ hr{
 }
 .bio-al-cover{
   flex-shrink:0;
-  width:clamp(92px, 24vw, 128px);
+  width:clamp(72px, 18vw, 96px);
+  padding:0;
+  border:none;
+  background:transparent;
+  cursor:pointer;
   text-decoration:none;
   transition:transform .25s ease, opacity .25s ease;
 }
@@ -208,6 +212,8 @@ hr{
   display:block;
   width:100%;
   height:auto;
+  aspect-ratio:1;
+  object-fit:cover;
   border-radius:6px;
   box-shadow:
     0 10px 28px rgba(0,0,0,.28),
@@ -218,13 +224,58 @@ hr{
   outline-offset:4px;
   border-radius:8px;
 }
+.cover-lb{
+  position:fixed;
+  inset:0;
+  z-index:999;
+  display:grid;
+  place-items:center;
+  padding:24px;
+  background:rgba(0,0,0,.72);
+}
+.cover-lb[hidden]{display:none}
+.cover-lb figure{
+  position:relative;
+  margin:0;
+  width:min(66vw, 480px);
+  max-width:100%;
+}
+.cover-lb img{
+  display:block;
+  width:100%;
+  height:auto;
+  border-radius:8px;
+  box-shadow:0 16px 48px rgba(0,0,0,.45);
+}
+.cover-lb figcaption{
+  margin-top:10px;
+  font-size:11px;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  color:rgba(255,255,255,.65);
+  text-align:center;
+}
+.cover-lb-close{
+  position:absolute;
+  top:-12px;
+  right:-12px;
+  width:32px;
+  height:32px;
+  border:1px solid rgba(255,255,255,.25);
+  border-radius:50%;
+  background:#1a1a1a;
+  color:#fff;
+  font-size:20px;
+  line-height:1;
+  cursor:pointer;
+}
 @media (max-width:520px){
   .bio-al{
     flex-direction:column-reverse;
     align-items:center;
   }
   .bio-al-cover{
-    width:min(140px, 42vw);
+    width:min(88px, 28vw);
   }
 }
 </style>
@@ -246,9 +297,9 @@ hr{
       <div class="bio-al-text">
         <p><a href="https://alreadylovedkids.com"><strong>Already Loved</strong></a> helps parents speak <strong>beloved identity</strong> over their kids—starting with <strong>personalized children's books</strong>. By day I'm an AI product manager at <a href="https://ensurall.com">Ensurall</a>. I write a <a href="https://letters.batsirai.com">weekly letter</a> for people who care about <strong>faith, AI, worship, and identity</strong>. I also ship <a href="https://worshipos.com">WorshipOS</a> for church leaders, and <a href="https://adorostudios.com">Adoro Studios</a> is the studio behind much of this work.</p>
       </div>
-      <a class="bio-al-cover" href="https://alreadylovedkids.com" aria-label="Already Loved — sample personalised book cover">
-        <img src="/already-loved-book-cover.png" alt="Sample Already Loved book cover: Simmone Is Already Loved" width="256" height="256" loading="lazy" decoding="async">
-      </a>
+      <button type="button" class="bio-al-cover" aria-label="View sample Already Loved book cover">
+        <img src="/already-loved-book-cover.png" alt="" width="96" height="96" loading="lazy" decoding="async">
+      </button>
     </div>
     <div class="previously">
       <span class="previously-label">Previously</span>
@@ -338,6 +389,13 @@ hr{
   </div>
 
 </div>
+<div id="cover-lb" class="cover-lb" hidden role="dialog" aria-modal="true" aria-label="Book cover preview">
+  <figure>
+    <button type="button" class="cover-lb-close" aria-label="Close cover preview">×</button>
+    <img src="/already-loved-book-cover.png" alt="Sample Already Loved book cover: Simmone Is Already Loved" width="680" height="680">
+    <figcaption>sample personalised cover</figcaption>
+  </figure>
+</div>
 <script>
 (function(){
   const els = document.querySelectorAll('.f');
@@ -358,6 +416,27 @@ hr{
       return;
     }
     observer.observe(el);
+  });
+
+  const lb = document.getElementById('cover-lb');
+  const openBtn = document.querySelector('.bio-al-cover');
+  if (!lb || !openBtn) return;
+  const closeBtn = lb.querySelector('.cover-lb-close');
+  const open = () => {
+    lb.hidden = false;
+    document.body.style.overflow = 'hidden';
+    closeBtn.focus();
+  };
+  const close = () => {
+    lb.hidden = true;
+    document.body.style.overflow = '';
+    openBtn.focus();
+  };
+  openBtn.addEventListener('click', open);
+  closeBtn.addEventListener('click', close);
+  lb.addEventListener('click', (e) => { if (e.target === lb) close(); });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !lb.hidden) close();
   });
 })();
 </script>
