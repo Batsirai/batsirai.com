@@ -2766,6 +2766,9 @@ function humanizeEvent(e) {
 
 function YourSession() {
   const [ids, setIds] = React.useState(null);
+  const [geo, setGeo] = React.useState(null);
+  const [clock, setClock] = React.useState('');
+
   React.useEffect(() => {
     const read = () => {
       const ph = window.posthog;
@@ -2780,9 +2783,45 @@ function YourSession() {
     const id = setInterval(read, 1500);
     return () => clearInterval(id);
   }, []);
+
+  React.useEffect(() => {
+    let dead = false;
+    fetch('/posthog/api/whereami')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => { if (!dead && j) setGeo(j); })
+      .catch(() => {});
+    return () => { dead = true; };
+  }, []);
+
+  React.useEffect(() => {
+    const tick = () => {
+      const tz = geo?.timezone;
+      try {
+        setClock(new Date().toLocaleTimeString([], {
+          hour: '2-digit', minute: '2-digit', hour12: false,
+          ...(tz ? { timeZone: tz } : {}),
+        }));
+      } catch {
+        setClock(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }));
+      }
+    };
+    tick();
+    const id = setInterval(tick, 15_000);
+    return () => clearInterval(id);
+  }, [geo?.timezone]);
+
   if (!ids) return null;
+
   const replayUrl = `https://us.posthog.com/project/436808/replay/${ids.sid}`;
   const short = (s) => s.length > 14 ? s.slice(0, 8) + '…' + s.slice(-4) : s;
+  const place = geo
+    ? [geo.city, geo.region || geo.country].filter(Boolean).join(', ')
+    : null;
+  const browserTz = (() => {
+    try { return Intl.DateTimeFormat().resolvedOptions().timeZone; }
+    catch { return null; }
+  })();
+
   return (
     <div className="ph-card ph-session">
       <div className="ph-card-head">
@@ -2792,6 +2831,17 @@ function YourSession() {
           watch yourself in PostHog ↗
         </a>
       </div>
+      {(place || browserTz) && (
+        <div className="ph-whereami">
+          <span className="ph-where-flag">{geo?.country ? flagOf(geo.country) : '🌐'}</span>
+          <span>
+            PostHog sees you in <b>{place || 'an unknown city'}</b>
+            {clock && <> right now · <b>{clock}</b> your time</>}
+            {geo?.timezone && <> · <span className="ph-mono-inline">{geo.timezone}</span></>}
+            <small>{' '}— that's the same GeoIP your reviewer's PostHog would have shown.</small>
+          </span>
+        </div>
+      )}
       <div className="ph-session-grid">
         <div><div className="ph-k">session_id</div><div className="ph-mono">{short(ids.sid)}</div></div>
         <div><div className="ph-k">distinct_id</div><div className="ph-mono">{short(ids.did || '')}</div></div>

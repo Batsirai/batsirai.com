@@ -155,6 +155,26 @@ export default {
 				});
 			}
 
+			// Geo + timezone for the current visitor, derived from Cloudflare's
+			// per-request `cf` data (same Maxmind GeoIP that PostHog enriches
+			// person profiles with — but available instantly on first hit so
+			// the "we see you" moment in YourSession lands immediately).
+			if (url.pathname === "/posthog/api/whereami") {
+				const cf = (request as Request & { cf?: IncomingRequestCfProperties }).cf;
+				const body = {
+					city: cf?.city ?? null,
+					region: cf?.region ?? null,
+					regionCode: cf?.regionCode ?? null,
+					country: cf?.country ?? null,
+					continent: cf?.continent ?? null,
+					timezone: cf?.timezone ?? null,
+					postalCode: cf?.postalCode ?? null,
+				};
+				return Response.json(body, {
+					headers: { "cache-control": "no-store" },
+				});
+			}
+
 			if (url.pathname === "/posthog") {
 				return Response.redirect(`${url.origin}/posthog/`, 301);
 			}
