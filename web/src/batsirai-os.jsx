@@ -1,4 +1,5 @@
 import React from "react";
+import { createPortal } from "react-dom";
 
 
 // tweaks-panel.jsx
@@ -1263,7 +1264,8 @@ function TabbedMain() {
         )}
         {tab === 'live' && (
           <>
-            <TabHeader title="Live PostHog Loop" sub="real-time · this very page" />
+            <TabHeader title="Live PostHog Loop" sub="real-time · this very page · clocks in ET + yours" />
+            <LiveClockStrip />
             <YourSession />
             <FunnelOfYou />
             <LiveLoop />
@@ -1285,8 +1287,398 @@ function TabHeader({ title, sub }) {
   );
 }
 
-function TabReadme() {
+/* ─── Venture info cards (readme + bio) ─── */
+const VentureCtx = React.createContext(null);
+
+const PRESS_MENTIONS = [
+  {
+    id: 'buffer-diaries',
+    outlet: 'Buffer',
+    series: 'Buffer Diaries',
+    title: 'Trust, Transparency, and Curiosity',
+    date: 'Apr 2023',
+    quote: 'After competing with about 4,000 applicants, I was fortunate to be offered the role. Life changing.',
+    excerpt: 'Growth PM on culture, remote work, and the four-day week.',
+    url: 'https://buffer.com/resources/buffer-diaries-batsirai/',
+  },
+  {
+    id: 'overflow-billboard',
+    outlet: 'Billboard',
+    series: 'Billboard Pro',
+    title: 'David Beside Goliath',
+    date: 'Jan 2015',
+    quote: 'The Overflow is betting a narrow focus will draw the attention of a market that\'s been underserved by traditional subscription services.',
+    excerpt: 'Launch coverage of the genre-specific Christian music streaming service.',
+    url: 'https://www.billboard.com/pro/overflow-christian-subscription-streaming-music-service/',
+  },
+];
+
+const VENTURES = {
+  'already-loved': {
+    id: 'already-loved',
+    name: 'Already Loved',
+    years: '2024–present',
+    role: 'Co-founder · lead engineer',
+    status: 'Live · book sales from May 2026',
+    tagline: 'AI-personalised identity books for preschoolers',
+    summary: 'Founded with my wife. Not personalised stories — personalised identity formation for the preschool years. I own product, engineering, security, logs, and the AI image pipeline. No engineering team — me, AI, my wife, and our kids.',
+    stack: 'TanStack Start · Convex · PostHog',
+    url: 'https://alreadylovedkids.com',
+    timelineTitle: 'Already Loved',
+  },
+  ensurall: {
+    id: 'ensurall',
+    name: 'Ensurall · GVC',
+    years: '2010–2022 · 2023–present',
+    role: 'AI Founder in Residence (current) · PM / architect (first stint)',
+    status: 'Day job · exclusive engagement',
+    tagline: 'Extended car warranty · B2B + B2C commerce',
+    summary: 'Architected ensurall.ca and the warranty commerce stack from 2010. Left for Buffer in 2022, came back in 2023 because quasi-founder work fits me better. Now I find ideas, design them, and ship 2–3 micro-projects a week with stakeholders.',
+    stack: 'Visualforce · Apex · JavaScript',
+    url: 'https://ensurall.ca',
+    timelineTitle: 'Ensurall',
+  },
+  posthog: {
+    id: 'posthog',
+    name: 'PostHog',
+    years: '2026 · applying',
+    role: 'Technical Ex-Founder / AI PM (target role)',
+    status: 'Why this application exists',
+    tagline: 'Product analytics + data-informed iteration',
+    summary: 'The factory is the product: faster build-ship-learn loops win. PostHog is closest to making autonomous companies real — analytics, experiments, feature flags, and PostHog Code. I want to help founders and enterprises run on those rails.',
+    stack: 'PostHog · HogQL · agentic workflows',
+    url: 'https://posthog.com',
+  },
+  songsuggest: {
+    id: 'songsuggest',
+    name: 'SongSuggest',
+    years: '2010 · sold',
+    role: 'Co-founder',
+    status: 'Exit · award-winning',
+    tagline: 'iPhone setlist tool for musicians',
+    summary: 'Two musicians, neither app developers, shipping at the dawn of the App Store. Remote designers and devs across three continents. Industry press picked it up. A stranger once recommended our app to me at lunch — he had no idea I built it.',
+    stack: 'iOS',
+    timelineTitle: 'SongSuggest',
+  },
+  quickstaff: {
+    id: 'quickstaff',
+    name: 'Quickstaff',
+    years: '2015–2022 · sold',
+    role: 'Founder · primary shipper',
+    status: 'Exit · 4.7★ Capterra',
+    tagline: 'Bootstrapped B2B staff-scheduling SaaS',
+    summary: 'Seven years compounding to a quiet strategic exit. I shipped every product update, test, and deploy — often learning the stack from YouTube the same day. The marketing site I built still runs unchanged four years later.',
+    stack: 'Laravel · Quasar · Vue',
+    url: 'https://www.quickstaffpro.com',
+    timelineTitle: 'Quickstaff',
+  },
+  overflow: {
+    id: 'overflow',
+    name: 'The Overflow',
+    years: '2013–2019',
+    role: 'Co-founder',
+    status: 'Wound down',
+    tagline: 'First genre-specific music streaming platform',
+    summary: 'Grew from 0 to 180,000 users with no paid marketing. Catalog UX rewrite cut internal ops time 80%. Curation travelled inside artist networks faster than ads. Shut down when angel funding ran out — the lesson stayed.',
+    stack: 'iOS · Android · Web · Python · PHP',
+    timelineTitle: 'The Overflow',
+    press: PRESS_MENTIONS.find((p) => p.id === 'overflow-billboard'),
+  },
+  buffer: {
+    id: 'buffer',
+    name: 'Buffer',
+    years: '2022–2023',
+    role: 'Growth PM · led the growth team',
+    status: '150k+ MAU · +11% activation',
+    tagline: 'Social scheduling for creators and teams',
+    summary: 'One of 4,000 applicants who made it inside. Owned freemium activation and pricing migration — $2M VAT recovered, +11% activation. Loved the team; left when the work became more PRDs than pull requests.',
+    stack: 'TypeScript · Python',
+    url: 'https://buffer.com',
+    timelineTitle: 'Buffer',
+    press: PRESS_MENTIONS.find((p) => p.id === 'buffer-diaries'),
+  },
+  'maverick-city': {
+    id: 'maverick-city',
+    name: 'Maverick City Music',
+    years: '2019–2023',
+    role: 'Led digital',
+    status: '10k → 2M+ YouTube growth era',
+    tagline: 'Grammy Award-winning worship collective · digital ecosystem',
+    summary: 'Grammy Award-winning group of artists and songwriters. Built ecommerce, fan tooling, merch logistics, and writing-camp ops while the audience scaled by three orders of magnitude. The invisible infrastructure that holds up a visible brand.',
+    stack: 'Webflow · WordPress',
+    url: 'https://maverickcitymusic.com',
+    timelineTitle: 'Maverick City Music',
+  },
+  cowriter: {
+    id: 'cowriter',
+    name: 'Cowriter',
+    years: '2023',
+    role: 'Founder',
+    status: 'Shipped · early LLM bet',
+    tagline: 'GPT-powered songwriting / lyric assistant',
+    summary: 'Built before the LLM gold rush. Didn\'t nail the timing; got the muscle memory for prompt engineering and shipping AI products — the same muscle Already Loved runs on now.',
+    stack: 'iOS · Android · OpenAI',
+    url: 'https://www.getcowriter.com',
+    timelineTitle: 'Cowriter',
+  },
+  'personal-agent': {
+    id: 'personal-agent',
+    name: 'Personal Agent',
+    years: '2024–present',
+    role: 'Creator · operator',
+    status: '260+ skill sales',
+    tagline: 'Agent-run skills marketplace business',
+    summary: 'My OpenClaw / Hermes agent authors and sells Claude skills on ClawMart — two personas, 39 skills, entirely agent-built and agent-deployed. I read the meters; the agent ships.',
+    stack: 'Hermes · Python · JavaScript',
+    url: 'https://www.shopclawmart.com/creators/41476833-3478-44b6-8843-062f7c70955b',
+    timelineTitle: 'Personal Agent',
+  },
+};
+
+function ventureMilestoneIndex(venture) {
+  if (!venture?.timelineTitle) return -1;
+  return MILESTONES.findIndex((m) =>
+    m.title === venture.timelineTitle || m.title.startsWith(venture.timelineTitle)
+  );
+}
+
+function layoutVenturePopover(anchor, el) {
+  if (!anchor || !el) return { top: 12, left: 12, place: 'right' };
+  const gap = 10;
+  const pad = 12;
+  const w = el.offsetWidth;
+  const h = el.offsetHeight;
+  let left = anchor.right + gap;
+  let top = anchor.top;
+  let place = 'right';
+
+  if (left + w > window.innerWidth - pad) {
+    left = anchor.left - w - gap;
+    place = 'left';
+  }
+  if (left < pad) {
+    left = Math.max(pad, anchor.left);
+    top = anchor.bottom + gap;
+    place = 'below';
+  }
+  top = Math.min(Math.max(pad, top), window.innerHeight - h - pad);
+  left = Math.min(Math.max(pad, left), window.innerWidth - w - pad);
+  return { top, left, place };
+}
+
+function useVenturePopoverState() {
+  const [state, setState] = React.useState(null);
+  const closeTimer = React.useRef(null);
+
+  const clearCloseTimer = React.useCallback(() => {
+    clearTimeout(closeTimer.current);
+  }, []);
+
+  const close = React.useCallback(() => {
+    clearCloseTimer();
+    setState(null);
+  }, [clearCloseTimer]);
+
+  const open = React.useCallback((id, getAnchor) => {
+    clearCloseTimer();
+    setState({ id, getAnchor });
+    window.posthog?.capture('venture_card_opened', { id, name: VENTURES[id].name });
+  }, [clearCloseTimer]);
+
+  const scheduleClose = React.useCallback(() => {
+    clearCloseTimer();
+    closeTimer.current = window.setTimeout(() => setState(null), 180);
+  }, [clearCloseTimer]);
+
+  const cancelClose = React.useCallback(() => {
+    clearCloseTimer();
+  }, [clearCloseTimer]);
+
+  React.useEffect(() => () => clearCloseTimer(), [clearCloseTimer]);
+
+  const ctx = React.useMemo(() => ({
+    activeId: state?.id ?? null,
+    open,
+    close,
+    scheduleClose,
+    cancelClose,
+  }), [state?.id, open, close, scheduleClose, cancelClose]);
+
+  return { state, ctx };
+}
+
+function VentureLink({ id, children, className = '' }) {
+  const ctx = React.useContext(VentureCtx);
+  const ref = React.useRef(null);
+  if (!ctx || !VENTURES[id]) return children;
+
+  const getAnchor = () => ref.current?.getBoundingClientRect() ?? null;
+  const show = () => ctx.open(id, getAnchor);
+  const isActive = ctx.activeId === id;
+
   return (
+    <button
+      ref={ref}
+      type="button"
+      className={`venture-link ${isActive ? 'venture-link-open' : ''} ${className}`.trim()}
+      aria-expanded={isActive}
+      onMouseEnter={show}
+      onMouseLeave={ctx.scheduleClose}
+      onFocus={show}
+      onBlur={ctx.scheduleClose}
+      onClick={(e) => {
+        e.preventDefault();
+        if (isActive) ctx.close();
+        else show();
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+function VenturePopover({ venture, getAnchor, onClose, onScheduleClose, onCancelClose }) {
+  const app = useApp();
+  const popRef = React.useRef(null);
+  const [layout, setLayout] = React.useState({ top: 0, left: 0, place: 'right' });
+  const milestoneIdx = ventureMilestoneIndex(venture);
+
+  const relayout = React.useCallback(() => {
+    const anchor = getAnchor?.();
+    const el = popRef.current;
+    if (!anchor || !el) return;
+    setLayout(layoutVenturePopover(anchor, el));
+  }, [getAnchor]);
+
+  React.useLayoutEffect(() => {
+    relayout();
+  }, [relayout, venture.id]);
+
+  React.useEffect(() => {
+    const onScroll = () => relayout();
+    const onResize = () => relayout();
+    window.addEventListener('scroll', onScroll, true);
+    window.addEventListener('resize', onResize);
+    return () => {
+      window.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('resize', onResize);
+    };
+  }, [relayout]);
+
+  React.useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  function goTimeline() {
+    onClose();
+    app?.setTab('timeline');
+    if (milestoneIdx >= 0) {
+      window.setTimeout(() => app?.jumpToMilestone?.(milestoneIdx, true), 120);
+    }
+  }
+
+  return createPortal(
+    <div
+      ref={popRef}
+      className={`ventm-pop ventm-pop--${layout.place}`}
+      style={{ top: layout.top, left: layout.left }}
+      role="dialog"
+      aria-labelledby="ventm-title"
+      onMouseEnter={onCancelClose}
+      onMouseLeave={onScheduleClose}
+    >
+      <div className="kpim ventm">
+        <div className="kpim-titlebar">
+          <div className="lights">
+            <span className="l1" onClick={onClose} title="close"></span>
+            <span className="l2" title="minimize"></span>
+            <span className="l3" title="zoom"></span>
+          </div>
+          <div className="kpim-title">info · {venture.name.toLowerCase()}</div>
+          <button className="kpim-close" onClick={onClose}>×</button>
+        </div>
+        <div className="kpim-body ventm-body">
+          <div className="ventm-status">{venture.status}</div>
+          <h3 className="ventm-name" id="ventm-title">{venture.name}</h3>
+          <div className="ventm-meta">
+            <span>{venture.years}</span>
+            <span className="ventm-dot">·</span>
+            <span>{venture.role}</span>
+          </div>
+          <p className="ventm-tagline">{venture.tagline}</p>
+          <p className="ventm-summary">{venture.summary}</p>
+          <div className="ventm-stack">
+            <span className="ventm-stack-label">stack</span>
+            <span>{venture.stack}</span>
+          </div>
+          {venture.press && (
+            <blockquote className="ventm-press">
+              <p className="ventm-press-quote">&ldquo;{venture.press.quote}&rdquo;</p>
+              <a
+                className="ventm-press-link"
+                href={venture.press.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => window.posthog?.capture('venture_press_link', {
+                  id: venture.id,
+                  press: venture.press.id,
+                })}
+              >
+                {venture.press.series} · {venture.press.date} ↗
+              </a>
+            </blockquote>
+          )}
+        </div>
+        <div className="kpim-foot ventm-foot">
+          <span>move away · <kbd>esc</kbd> to close</span>
+          <div className="ventm-foot-actions">
+            {milestoneIdx >= 0 && (
+              <button type="button" className="kpim-foot-btn" onClick={goTimeline}>
+                timeline →
+              </button>
+            )}
+            {venture.press && (
+              <a
+                className="kpim-foot-btn ventm-ext"
+                href={venture.press.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => window.posthog?.capture('venture_press_link', {
+                  id: venture.id,
+                  press: venture.press.id,
+                })}
+              >
+                press ↗
+              </a>
+            )}
+            {venture.url && (
+              <a
+                className="kpim-foot-btn ventm-ext"
+                href={venture.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => window.posthog?.capture('venture_external_link', { id: venture.id })}
+              >
+                site ↗
+              </a>
+            )}
+            <button type="button" className="kpim-foot-btn" onClick={onClose}>close</button>
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+function TabReadme() {
+  const { state: ventureState, ctx: ventureCtx } = useVenturePopoverState();
+  const venture = ventureState ? VENTURES[ventureState.id] : null;
+
+  return (
+    <VentureCtx.Provider value={ventureCtx}>
     <div className="readme">
       <div className="readme-eyebrow">
         // application :: technical_ex_founder / ai_pm @ posthog
@@ -1296,19 +1688,39 @@ function TabReadme() {
         <span className="underscore"></span>
       </h1>
       <p className="readme-lede">
-        Building <em>Already Loved</em> with my wife. Applying to PostHog because the
-        autonomous company is coming and you're closest to making it real.
+        Fifteen years of building and shipping. Serial founder — two exits. Ex-Buffer PM.
+        I&apos;ve sung in front of thousands. I love getting up every day to build and ship
+        products: digital and musical ideas alike. AI gave me superpowers. I&apos;m only
+        limited by my imagination (and token budget).
       </p>
 
+      <div className="readme-tldr">
+        <div className="readme-tldr-label">tldr</div>
+        <ul>
+          <li>Building <VentureLink id="already-loved"><em>Already Loved</em></VentureLink> with my wife — shipping toward an autonomous company</li>
+          <li>9 products shipped · 2 exits · 330k+ users reached · $5M+/yr influenced</li>
+          <li>Day job: AI Founder in Residence at <VentureLink id="ensurall">Ensurall</VentureLink> — 2–3 micro-projects/week on Salesforce</li>
+          <li>Applying to <VentureLink id="posthog">PostHog</VentureLink> to help founders run faster <b>build → ship → learn</b> loops</li>
+        </ul>
+      </div>
+
       <KPIs />
+
+      <blockquote className="readme-callout">
+        <strong>The factory is the product.</strong> The faster the build-ship-learn loop,
+        the higher your chances of success. That&apos;s what PostHog enables — speed of
+        iteration powered by data-informed agentic agency. That&apos;s what I want to help
+        bring to founders and enterprises: the environment where autonomous companies can
+        flourish.
+      </blockquote>
 
       <div className="bio">
         <p>
           What I love most is <b>building</b>. The wonder of finding out a stranger
           on the other side of the world is using something I made in my basement
-          never gets old. The first SongSuggest user — somewhere we couldn't trace,
-          maybe Dubai, maybe further. The first Quickstaff customer in 2013 calling
-          my co-founder to ask if they'd been charged by mistake. The first Already Loved
+          never gets old. The first <VentureLink id="songsuggest">SongSuggest</VentureLink> user — somewhere we couldn't trace,
+          maybe Dubai, maybe further. The first <VentureLink id="quickstaff">Quickstaff</VentureLink> customer in 2013 calling
+          my co-founder to ask if they'd been charged by mistake. The first <VentureLink id="already-loved">Already Loved</VentureLink>
           book sold to a family in Australia about a month ago.
           <b> Twenty-five years</b> coding, and that moment still wrecks me.
         </p>
@@ -1316,26 +1728,26 @@ function TabReadme() {
           The hardest part of building isn't building. It's saying <em>no</em> to
           many, many compelling ideas. My idea-to-shipped-product rate is high enough
           that, left unchecked, I will start six things at once. I'm purposely throttling
-          it to focus on <b>Already Loved</b> with my wife.
+          it to focus on <VentureLink id="already-loved"><b>Already Loved</b></VentureLink> with my wife.
         </p>
         <p>
           I've spent <b>fifteen years</b> as the technical co-founder of whatever I was
-          working on. My own things — <b>SongSuggest</b> (sold), <b>Quickstaff</b> (sold 2022),
-          <b> The Overflow</b> (co-founded, wound down), Cowriter, my Personal Agent, and now
-          <b> Already Loved</b>. Other people's — Buffer's freemium growth, Maverick City's
-          digital ecosystem, the warranty portals at Ensurall. The shape of the work has always
+          working on. My own things — <VentureLink id="songsuggest"><b>SongSuggest</b></VentureLink> (sold), <VentureLink id="quickstaff"><b>Quickstaff</b></VentureLink> (sold 2022),
+          <VentureLink id="overflow"><b> The Overflow</b></VentureLink> (co-founded, wound down), <VentureLink id="cowriter">Cowriter</VentureLink>, my <VentureLink id="personal-agent">Personal Agent</VentureLink>, and now
+          <VentureLink id="already-loved"><b> Already Loved</b></VentureLink>. Other people's — <VentureLink id="buffer">Buffer</VentureLink>'s freemium growth, <VentureLink id="maverick-city">Maverick City</VentureLink>'s
+          digital ecosystem, the warranty portals at <VentureLink id="ensurall">Ensurall</VentureLink>. The shape of the work has always
           been the same: see something that needs to ship, learn what you don't know, ship it.
         </p>
         <p>
-          Right now my day job is being the <b>AI Founder in Residence</b> at Ensurall + GVC.
+          Right now my day job is being the <b>AI Founder in Residence</b> at <VentureLink id="ensurall">Ensurall + GVC</VentureLink>.
           I love the team, the autonomy, and the cadence — <b>two to three micro-projects a week</b>
           on a Salesforce stack. But in the end, we sell car warranties. I'd love to
           spend my days helping <em>founders</em> build autonomous companies — powered and
-          informed by PostHog.
+          informed by <VentureLink id="posthog">PostHog</VentureLink>.
         </p>
         <p>
-          What I'm most looking forward to at PostHog: <b>PostHog Code</b>, and the chance to
-          help run an <em>autonomous company</em>. I'm already trying to build Already Loved
+          What I'm most looking forward to at <VentureLink id="posthog">PostHog</VentureLink>: <b>PostHog Code</b>, and the chance to
+          help run an <em>autonomous company</em>. I'm already trying to build <VentureLink id="already-loved">Already Loved</VentureLink>
           into one. I'd love to do that on rails you've already laid.
         </p>
         <p>
@@ -1352,6 +1764,8 @@ function TabReadme() {
         <UseTabLink to="live">→ live posthog loop</UseTabLink>
       </div>
 
+      <ReadmePress />
+
       <div className="readme-tags">
         <span>founder × 5</span>
         <span>2 exits</span>
@@ -1361,6 +1775,16 @@ function TabReadme() {
         <span>2–3 micro-projects / wk</span>
       </div>
     </div>
+    {venture && ventureState && (
+      <VenturePopover
+        venture={venture}
+        getAnchor={ventureState.getAnchor}
+        onClose={ventureCtx.close}
+        onScheduleClose={ventureCtx.scheduleClose}
+        onCancelClose={ventureCtx.cancelClose}
+      />
+    )}
+    </VentureCtx.Provider>
   );
 }
 
@@ -1368,6 +1792,32 @@ function UseTabLink({ to, children }) {
   const app = useApp();
   return (
     <button className="rq-link" onClick={() => app.setTab(to)}>{children}</button>
+  );
+}
+
+function ReadmePress() {
+  if (!PRESS_MENTIONS.length) return null;
+  return (
+    <section className="readme-press" aria-label="Press and features">
+      <div className="readme-press-label">in the press</div>
+      <ul className="readme-press-list">
+        {PRESS_MENTIONS.map((item) => (
+          <li key={item.id}>
+            <a
+              className="readme-press-item"
+              href={item.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={() => window.posthog?.capture('press_mention_click', { id: item.id })}
+            >
+              <span className="readme-press-outlet">{item.outlet} · {item.series}</span>
+              <span className="readme-press-title">{item.title}</span>
+              <span className="readme-press-meta">{item.date} · {item.excerpt}</span>
+            </a>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 
@@ -1424,7 +1874,7 @@ const KPI_DATA = [
       { name: "The Overflow",         v: "180,000+ users" },
       { name: "Quickstaff customers", v: "~8,000 venues"  },
       { name: "Personal Agent sales", v: "260+"            },
-      { name: "Already Loved beta",   v: "families paying" },
+      { name: "Already Loved",        v: "book sales · May 2026" },
       { name: "Maverick City youtube",v: "excluded (passive)" },
     ],
     note: "active users only. honest math beats big math.",
@@ -1527,7 +1977,7 @@ function KPIModal({ kpi, onClose }) {
 const MILESTONES = [
   { year: "2024–present", yStart: 2024, title: "Already Loved",
     type: "AI-personalised identity books for children",
-    impact: "Paying users · 3,000+ commits in 2026 · going concern",
+    impact: "Book sales launched May 2026 · 3,000+ commits in 2026 · going concern",
     tag: "FOUNDED + SHIPPING", tagClass: "tag-founded", built: true,
     url: "https://alreadylovedkids.com",
     detail: "Founded with my wife. Not personalised stories — personalised identity formation, the vitamin every kid needs in the preschool years. The illustrated book is the spoonful of sugar that makes it go down. I fix the bugs, harden security, check the logs, write the image prompts. No co-founder, no engineering team — just me, AI, my wife, and my kids." },
@@ -1553,12 +2003,14 @@ const MILESTONES = [
     type: "Growth PM · led the growth team (not the product team)",
     impact: "150k+ MAU · +11% activation · $2M VAT recovered",
     tag: "LED GROWTH", tagClass: "tag-led", built: false,
+    url: "https://buffer.com",
     detail: "One of 4,000 applicants who made it inside. PM on the product team, but leading growth: I owned activation + pricing migration. Loved the team. But two-week sprints + more PRDs than PRs wasn't the work I came to do. Left to go back to building." },
   { year: "2019–2023", yStart: 2019, title: "Maverick City Music",
-    type: "Digital ecosystem · ecommerce · writing camps",
+    type: "Grammy Award-winning artists & songwriters · digital ecosystem",
     impact: "Built digital infrastructure during 10k → 2M+ YouTube growth",
     tag: "LED DIGITAL", tagClass: "tag-led", built: false,
-    detail: "The audience scaled by three orders of magnitude. I led the ecommerce, the fan tooling, the merch logistics, the writing-camp ops. The kind of work that doesn't show up on a deck but holds the whole thing up." },
+    url: "https://maverickcitymusic.com",
+    detail: "Grammy Award-winning group of artists and songwriters. The audience scaled by three orders of magnitude. I led the ecommerce, the fan tooling, the merch logistics, the writing-camp ops. The kind of work that doesn't show up on a deck but holds the whole thing up." },
   { year: "2015–2022", yStart: 2015, title: "Quickstaff",
     type: "Bootstrapped B2B SaaS · staff-scheduling marketplace",
     impact: "Profitable · 4.7★ Capterra · sold 2022",
@@ -1736,22 +2188,52 @@ function Experiments() {
 
 /* ─── Values component ─── */
 function Values() {
-  const [open, setOpen] = React.useState({ 0: true });
+  const [openIdx, setOpenIdx] = React.useState(0);
+
   return (
-    <div className="values">
+    <div className="values-layout">
+      <figure className="values-photo">
+        <img
+          src="/posthog/values-posthog-shirt.png"
+          alt="Batsirai pointing at the PostHog logo on his shirt"
+          width={560}
+          height={700}
+          loading="lazy"
+        />
+        <figcaption className="values-photo-cap">
+          Best swag kit I got for being a posthog org!!! T-shirt is awesome quality btw.
+        </figcaption>
+      </figure>
+
+      <div className="values-acc">
       {VALUES.map((v, i) => (
-        <article key={v.id} className={`value-card ${open[i] ? 'open' : ''}`}>
-          <header className="value-head" onClick={() => setOpen(o => ({ ...o, [i]: !o[i] }))}>
-            <div className="value-num">{String(i+1).padStart(2,'0')}</div>
-            <h3 className="value-label">{v.label}</h3>
-            <span className="value-toggle">{open[i] ? '−' : '+'}</span>
-          </header>
+        <article key={v.id} className={`value-card ${openIdx === i ? 'open' : ''}`}>
+            <header
+              className="value-head"
+              onClick={() => setOpenIdx(i)}
+              role="button"
+              tabIndex={0}
+              aria-expanded={openIdx === i}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  setOpenIdx(i);
+                }
+              }}
+            >
+              <div className="value-num">
+                {String(i + 1).padStart(2, '0')}
+              </div>
+              <h3 className="value-label">{v.label}</h3>
+              <span className="value-toggle">{openIdx === i ? '−' : '+'}</span>
+            </header>
           <div className="value-body">
-            <blockquote className="value-pull">"{v.pull}"</blockquote>
+            <blockquote className="value-pull">&ldquo;{v.pull}&rdquo;</blockquote>
             {v.paragraphs.map((p, j) => <p key={j}>{p}</p>)}
           </div>
         </article>
       ))}
+      </div>
     </div>
   );
 }
@@ -1873,6 +2355,83 @@ function Commits() {
 }
 
 /* ─── Live PostHog Loop ─── */
+const BAT_TZ = "America/Toronto"; // Eastern Time (ET)
+
+function offsetKey(tz, date = new Date()) {
+  const part = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz,
+    timeZoneName: "longOffset",
+  })
+    .formatToParts(date)
+    .find((p) => p.type === "timeZoneName");
+  return part?.value ?? tz;
+}
+
+function formatClockTime(date, timeZone) {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: true,
+  }).format(date);
+}
+
+function formatTzShort(date, timeZone) {
+  const part = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    timeZoneName: "short",
+  })
+    .formatToParts(date)
+    .find((p) => p.type === "timeZoneName");
+  return part?.value ?? timeZone.split("/").pop().replace(/_/g, " ");
+}
+
+function formatPlace(tz) {
+  return tz.split("/").pop().replace(/_/g, " ").toLowerCase();
+}
+
+function LiveClockStrip() {
+  const [now, setNow] = React.useState(() => new Date());
+  const visitorTz = React.useMemo(
+    () => Intl.DateTimeFormat().resolvedOptions().timeZone,
+    [],
+  );
+
+  React.useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const sameZone = offsetKey(BAT_TZ, now) === offsetKey(visitorTz, now);
+
+  return (
+    <div className="live-clocks" aria-live="polite">
+      <span className="live-dot" aria-hidden="true" />
+      <span className="live-clocks-label">now</span>
+      <span className="live-clocks-time">
+        {formatClockTime(now, BAT_TZ)}{" "}
+        <abbr title={BAT_TZ}>{formatTzShort(now, BAT_TZ)}</abbr>
+      </span>
+      <span className="live-clocks-who">batsirai · eastern</span>
+      {sameZone ? (
+        <span className="live-clocks-same">· you&apos;re in eastern too</span>
+      ) : (
+        <>
+          <span className="live-clocks-sep" aria-hidden="true">
+            ·
+          </span>
+          <span className="live-clocks-time">
+            {formatClockTime(now, visitorTz)}{" "}
+            <abbr title={visitorTz}>{formatTzShort(now, visitorTz)}</abbr>
+          </span>
+          <span className="live-clocks-who">you · {formatPlace(visitorTz)}</span>
+        </>
+      )}
+    </div>
+  );
+}
+
 function Sparkline({ data, color }) {
   const max = Math.max(...data), min = Math.min(...data);
   const range = max - min || 1;
@@ -2211,6 +2770,25 @@ function Survey() {
 }
 
 /* ─── Music tab ─── */
+function SunoEmbed({ id, title }) {
+  return (
+    <div className="music-embed">
+      <iframe
+        src={`https://suno.com/embed/${id}`}
+        width="100%"
+        height="240"
+        frameBorder="0"
+        allow="autoplay; encrypted-media; fullscreen"
+        allowFullScreen
+        loading="lazy"
+        referrerPolicy="no-referrer-when-downgrade"
+        title={title}>
+        <a href={`https://suno.com/song/${id}`}>Listen on Suno</a>
+      </iframe>
+    </div>
+  );
+}
+
 function Music() {
   return (
     <div className="music">
@@ -2220,59 +2798,90 @@ function Music() {
         to play it for someone.
       </p>
 
-      <div className="music-block">
-        <div className="music-block-head">
-          <div className="music-title">Lay Right Here</div>
-          <div className="music-sub">recent · Suno</div>
+      <section className="music-section" aria-labelledby="music-suno-heading">
+        <div className="music-section-head">
+          <h3 className="music-section-title" id="music-suno-heading">AI music · Suno</h3>
+          <p className="music-section-desc">
+            Melody, lyrics, and Suno prompt by Batsirai — voice demo to finished
+            track with AI production.
+          </p>
         </div>
-        <div className="music-embed">
-          <iframe
-            src="https://suno.com/embed/b33be6da-3f2e-4273-a377-6dffbe585f5d"
-            width="100%" height="240" frameBorder="0"
-            allow="autoplay; encrypted-media; fullscreen"
-            allowFullScreen loading="lazy"
-            referrerPolicy="no-referrer-when-downgrade"
-            title="Lay Right Here">
-            <a href="https://suno.com/song/b33be6da-3f2e-4273-a377-6dffbe585f5d">Listen on Suno</a>
-          </iframe>
-        </div>
-      </div>
 
-      <div className="music-block">
-        <div className="music-block-head">
-          <div className="music-title">Batsirai · Spotify</div>
-          <div className="music-sub">recorded catalog</div>
+        <div className="music-block">
+          <div className="music-block-head">
+            <div className="music-title">Lay Right Here</div>
+            <div className="music-sub">lyrics & melody · batsirai</div>
+          </div>
+          <p className="music-credit">
+            Lyrics and melody by me. I took it from a voice demo to this with AI
+            music on Suno.
+          </p>
+          <SunoEmbed id="b33be6da-3f2e-4273-a377-6dffbe585f5d" title="Lay Right Here" />
         </div>
-        <div className="music-embed">
-          <iframe
-            data-testid="embed-iframe"
-            style={{ borderRadius: 0 }}
-            src="https://open.spotify.com/embed/artist/4Lm4Yc59M7v0qXP77AucZD?utm_source=generator"
-            width="100%" height="352" frameBorder="0"
-            allowFullScreen=""
-            allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
-            loading="lazy"
-            title="Batsirai on Spotify">
-          </iframe>
-        </div>
-      </div>
 
-      <div className="music-block">
-        <div className="music-block-head">
-          <div className="music-title">Live & Studio Sessions</div>
-          <div className="music-sub">youtube · playlist</div>
+        <div className="music-block">
+          <div className="music-block-head">
+            <div className="music-title">Here I Made This</div>
+            <div className="music-sub">lyrics & melody · batsirai</div>
+          </div>
+          <p className="music-credit">
+            Also written by me — same pipeline: my words and tune, prompt-engineered
+            into Suno.
+          </p>
+          <SunoEmbed id="a48701f1-404b-4c0d-b23b-65f31c95205d" title="Here I Made This" />
         </div>
-        <div className="music-embed">
-          <iframe
-            src="https://www.youtube.com/embed/videoseries?si=DWmWrKazs_ZIWw7R&amp;list=PL597D63DE8B4003B3"
-            width="100%" height="360" frameBorder="0"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-            referrerPolicy="strict-origin-when-cross-origin"
-            allowFullScreen
-            title="Batsirai · YouTube playlist">
-          </iframe>
+      </section>
+
+      <section className="music-section" aria-labelledby="music-live-heading">
+        <div className="music-section-head">
+          <h3 className="music-section-title" id="music-live-heading">
+            Performed · written · recorded
+          </h3>
+          <p className="music-section-desc">
+            Live and studio catalog — performed, written, and recorded by Batsirai.
+          </p>
         </div>
-      </div>
+
+        <div className="music-block">
+          <div className="music-block-head">
+            <div className="music-title">Batsirai · Spotify</div>
+            <div className="music-sub">recorded catalog</div>
+          </div>
+          <div className="music-embed">
+            <iframe
+              data-testid="embed-iframe"
+              style={{ borderRadius: 0 }}
+              src="https://open.spotify.com/embed/artist/4Lm4Yc59M7v0qXP77AucZD?utm_source=generator"
+              width="100%"
+              height="352"
+              frameBorder="0"
+              allowFullScreen=""
+              allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+              loading="lazy"
+              title="Batsirai on Spotify">
+            </iframe>
+          </div>
+        </div>
+
+        <div className="music-block">
+          <div className="music-block-head">
+            <div className="music-title">Live & Studio Sessions</div>
+            <div className="music-sub">youtube · playlist</div>
+          </div>
+          <div className="music-embed">
+            <iframe
+              src="https://www.youtube.com/embed/videoseries?si=DWmWrKazs_ZIWw7R&amp;list=PL597D63DE8B4003B3"
+              width="100%"
+              height="360"
+              frameBorder="0"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+              referrerPolicy="strict-origin-when-cross-origin"
+              allowFullScreen
+              title="Batsirai · YouTube playlist">
+            </iframe>
+          </div>
+        </div>
+      </section>
 
       <p className="music-foot">
         Industry trade press awarded SongSuggest because they trusted my
@@ -2558,6 +3167,7 @@ function App() {
     resetWindow, snapshot, quit,
     _registerTL: (api) => { tlApi.current = api; },
     tlExpandAll: (v) => tlApi.current?.expandAll(v),
+    jumpToMilestone: (idx, flash) => tlApi.current?.jumpToMilestone(idx, flash),
   };
 
   const commands = [
