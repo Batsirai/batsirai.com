@@ -1475,11 +1475,9 @@ function TabbedMain() {
 
   const scrollActiveTabIntoView = React.useCallback((tabId) => {
     if (!mobileTabs) return;
-    const container = tabsRef.current;
     const el = tabRefs.current[tabId];
-    if (!container || !el) return;
-    const left = el.offsetLeft - (container.clientWidth - el.offsetWidth) / 2;
-    container.scrollTo({ left: Math.max(0, left), behavior: 'smooth' });
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
   }, [mobileTabs]);
 
   React.useEffect(() => {

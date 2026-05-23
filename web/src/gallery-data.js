@@ -143,11 +143,11 @@ function parseEraBounds(era) {
   return { start, end };
 }
 
-/** Oldest era first; tie-break on end year, then label. */
+/** Newest era first; tie-break on end year, then label. */
 export function compareGalleryGroups(a, b) {
   const ea = parseEraBounds(a.era);
   const eb = parseEraBounds(b.era);
-  if (ea.start !== eb.start) return ea.start - eb.start;
-  if (ea.end !== eb.end) return ea.end - eb.end;
+  if (ea.start !== eb.start) return eb.start - ea.start;
+  if (ea.end !== eb.end) return eb.end - ea.end;
   return a.label.localeCompare(b.label);
 }
