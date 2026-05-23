@@ -626,7 +626,7 @@ function MenuBar({ now }) {
             <MenuItem label="✓ PostHog · Technical Ex-Founder" disabled />
             <MenuItem label="(no others — single-target)" disabled />
             <MenuSep />
-            <MenuItem label="Quit" onClick={() => app.quit()} kbd="⌘Q" />
+            <MenuItem label="Quit" onClick={() => app.openPalette('exit')} kbd="⌘Q" />
           </div>
         )}
       </div>
@@ -729,7 +729,7 @@ function MenuBar({ now }) {
           )}
         </button>
         <span className="live"><span className="live-dot"></span> rec</span>
-        <span style={{cursor:'pointer'}} onClick={() => app.openPalette()}>⌘K</span>
+        <MenuBarCmdk />
         <span>v0.2</span>
         <span>{now}</span>
       </div>
@@ -952,8 +952,100 @@ function Terminal({ scriptId, onClose, onRun }) {
   );
 }
 
+const CMDK_DISCOVERED_KEY = 'batsirai-cmdk-discovered';
+const CMDK_EXIT_INTENT_KEY = 'batsirai-cmdk-exit-intent';
+const CMDK_NUDGE_AFTER_MS = 60_000;
+const CMDK_NUDGE_MIN_READ_MS = 20_000;
+
+function useCmdkDiscovered() {
+  const [discovered, setDiscovered] = React.useState(() => {
+    try { return localStorage.getItem(CMDK_DISCOVERED_KEY) === '1'; } catch { return false; }
+  });
+  const markDiscovered = React.useCallback(() => {
+    setDiscovered(true);
+    try { localStorage.setItem(CMDK_DISCOVERED_KEY, '1'); } catch {}
+  }, []);
+  return [discovered, markDiscovered];
+}
+
+function useCmdkNudge(cmdkDiscovered) {
+  const [nudge, setNudge] = React.useState(false);
+  const pageStart = React.useRef(Date.now());
+  const tabsSeen = React.useRef(new Set(['readme']));
+  const fired = React.useRef(false);
+
+  const activateNudge = React.useCallback((reason) => {
+    if (cmdkDiscovered || fired.current) return;
+    fired.current = true;
+    setNudge(true);
+    capturePh('command_palette_nudge_shown', { reason });
+  }, [cmdkDiscovered]);
+
+  React.useEffect(() => {
+    if (cmdkDiscovered) return;
+    const id = window.setTimeout(() => activateNudge('timer'), CMDK_NUDGE_AFTER_MS);
+    return () => window.clearTimeout(id);
+  }, [cmdkDiscovered, activateNudge]);
+
+  const noteTabVisit = React.useCallback((tabId) => {
+    if (cmdkDiscovered || fired.current) return;
+    tabsSeen.current.add(tabId);
+    const elapsed = Date.now() - pageStart.current;
+    if (elapsed >= CMDK_NUDGE_MIN_READ_MS && tabsSeen.current.size >= 2) {
+      activateNudge('explored');
+    }
+  }, [cmdkDiscovered, activateNudge]);
+
+  return [nudge, noteTabVisit];
+}
+
+function CmdkTrigger({ compact = false, className = '', nudge = false }) {
+  const app = useApp();
+  const highlight = nudge || app.cmdkNudge;
+  return (
+    <button
+      type="button"
+      className={`cmdk-trigger ${highlight ? 'cmdk-trigger--nudge' : ''} ${compact ? 'cmdk-trigger--compact' : ''} ${className}`.trim()}
+      onClick={(e) => { e.stopPropagation(); app.openPalette('button'); }}
+      aria-label="Open command palette (⌘K)"
+    >
+      {!compact && <span className="cmdk-trigger-label">Try command palette</span>}
+      <kbd className="cmdk-trigger-kbd">⌘K</kbd>
+    </button>
+  );
+}
+
+function MenuBarCmdk() {
+  const app = useApp();
+  const nudge = app.cmdkNudge && !app.cmdkDiscovered;
+  return (
+    <span className={`mb-cmdk-wrap ${nudge ? 'mb-cmdk-wrap--nudge' : ''}`}>
+      {nudge && (
+        <span className="cmdk-nudge-callout" aria-hidden="true">
+          <span className="cmdk-nudge-arrow">→</span>
+          <span className="cmdk-nudge-text">try this</span>
+        </span>
+      )}
+      <CmdkTrigger compact nudge={nudge} />
+    </span>
+  );
+}
+
+function CmdkPromo() {
+  const app = useApp();
+  if (app.cmdkDiscovered) return null;
+  return (
+    <div className={`cmdk-promo ${app.cmdkNudge ? 'cmdk-promo--nudge' : ''}`}>
+      <p className="cmdk-promo-copy">
+        <strong>Start here:</strong> press <kbd>⌘K</kbd> (or click below) to jump tabs, run scripts, and flip themes — like a real OS.
+      </p>
+      <CmdkTrigger nudge={app.cmdkNudge} />
+    </div>
+  );
+}
+
 /* ─── Command palette ─── */
-function CommandPalette({ commands, onClose }) {
+function CommandPalette({ commands, reason, onClose }) {
   const [q, setQ] = React.useState('');
   const [sel, setSel] = React.useState(0);
   const inputRef = React.useRef(null);
@@ -979,11 +1071,19 @@ function CommandPalette({ commands, onClose }) {
     return () => document.removeEventListener('keydown', onKey);
   }, [filtered, sel, onClose]);
 
-  return (
+  const exitBanner = reason === 'exit' ? (
+    <div className="cmdp-banner">
+      <span className="cmdp-banner-icon">⌘</span>
+      <span>Wait — before you go, try a command. Esc closes this and keeps you here.</span>
+    </div>
+  ) : null;
+
+  return createPortal(
     <div className="cmdp-back" onClick={onClose}>
       <div className={`cmdp ${dragging ? 'dragging' : ''}`}
            onClick={(e) => e.stopPropagation()}
            style={{ transform: `translate(${pos.x}px, ${pos.y}px)` }}>
+        {exitBanner}
         <div className="cmdp-search" onMouseDown={onDown} onTouchStart={onDown}
              style={{ cursor: dragging ? 'grabbing' : 'grab' }}>
           <span className="icon">⌘</span>
@@ -1007,7 +1107,8 @@ function CommandPalette({ commands, onClose }) {
           <span>{filtered.length} of {commands.length}</span>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -1060,6 +1161,7 @@ function DesktopIcons({ side, items, activeTab }) {
 
 /* ─── Draggable window ─── */
 function DraggableWindow({ title, meta, children }) {
+  const app = useApp();
   const [pos, setPos] = React.useState({ x: 0, y: 0 });
   const [dragging, setDragging] = React.useState(false);
   const start = React.useRef(null);
@@ -1108,7 +1210,8 @@ function DraggableWindow({ title, meta, children }) {
           onTouchStart={onDown}
           onDoubleClick={() => setPos({ x: 0, y: 0 })}>
           <div className="lights" onMouseDown={(e) => e.stopPropagation()}>
-            <span className="l1" title="close"></span>
+            <span className="l1" title="close (opens ⌘K)"
+                  onClick={(e) => { e.stopPropagation(); app?.openPalette?.('exit'); }}></span>
             <span className="l2" title="minimize"></span>
             <span className="l3" title="zoom"></span>
           </div>
@@ -1126,6 +1229,17 @@ function WindowHead() {
 }
 
 /* ─── Profile sidebar (left of window body) ─── */
+const ACHIEVEMENTS = [
+  { sticker: '✮', label: 'founder × 5', tip: 'Founded or co-founded five companies.' },
+  { sticker: '$', label: '2 exits', tip: 'Two quiet exits: SongSuggest and Quickstaff.' },
+  { sticker: '⚑', label: 'led × 3', tip: 'Led product at three companies before PostHog.' },
+  { sticker: '↗', label: '+11%', tip: 'Grew active publishing at Buffer by 11% year-on-year.' },
+  { sticker: '◈', label: 'early ai', tip: 'Shipped an LLM product in 2023, before it was trendy.' },
+  { sticker: '◍', label: '330k', tip: 'Products I have built have reached 330k+ users.' },
+  { sticker: '¤', label: '$5M+', tip: 'Influenced $5M+ per year in revenue at Ensurall.' },
+  { sticker: '◎', label: '3k commits', tip: '3,000+ git commits shipped in 2026 alone.' },
+];
+
 function ProfileSidebar() {
   return (
     <aside className="profile-side">
@@ -1179,15 +1293,20 @@ function ProfileSidebar() {
 
       <section className="ps-block">
         <div className="ps-block-head">Achievements <span className="ps-arrow">↗</span></div>
+        <p className="ps-achievements-hint">Career highlights — hover any badge for detail.</p>
         <div className="ps-achievements">
-          <div className="ach" title="Founded or co-founded a company × 5"><div className="ach-sticker">✮</div><span className="ach-label">founder × 5</span></div>
-          <div className="ach" title="Two successful exits: SongSuggest + Quickstaff"><div className="ach-sticker">$</div><span className="ach-label">2 exits</span></div>
-          <div className="ach" title="Led product at other companies × 3"><div className="ach-sticker">⚑</div><span className="ach-label">led × 3</span></div>
-          <div className="ach" title="Led growth at Buffer"><div className="ach-sticker">↗</div><span className="ach-label">+11%</span></div>
-          <div className="ach" title="Shipped LLM product in 2023"><div className="ach-sticker">◈</div><span className="ach-label">early ai</span></div>
-          <div className="ach" title="330k+ users reached"><div className="ach-sticker">◍</div><span className="ach-label">330k</span></div>
-          <div className="ach" title="$5M+/yr revenue influenced at Ensurall"><div className="ach-sticker">¤</div><span className="ach-label">$5M+</span></div>
-          <div className="ach" title="3,000+ commits in 2026"><div className="ach-sticker">◎</div><span className="ach-label">3k commits</span></div>
+          {ACHIEVEMENTS.map((a) => (
+            <div
+              key={a.label}
+              className="ach"
+              data-tip={a.tip}
+              tabIndex={0}
+              aria-label={`${a.label}: ${a.tip}`}
+            >
+              <div className="ach-sticker">{a.sticker}</div>
+              <span className="ach-label">{a.label}</span>
+            </div>
+          ))}
         </div>
       </section>
 
@@ -1323,6 +1442,8 @@ const VENTURES = {
     tagline: 'AI-personalised identity books for preschoolers',
     summary: 'Founded with my wife. Not personalised stories — personalised identity formation for the preschool years. I own product, engineering, security, logs, and the AI image pipeline. No engineering team — me, AI, my wife, and our kids.',
     stack: 'TanStack Start · Convex · PostHog',
+    coverImage: '/posthog/already-loved-book-cover.png',
+    coverAlt: 'Sample Already Loved book cover — Simmone Is Already Loved',
     url: 'https://alreadylovedkids.com',
     timelineTitle: 'Already Loved',
   },
@@ -1482,7 +1603,7 @@ function useVenturePopoverState() {
   const open = React.useCallback((id, getAnchor) => {
     clearCloseTimer();
     setState({ id, getAnchor });
-    window.posthog?.capture('venture_card_opened', { id, name: VENTURES[id].name });
+    capturePh('venture_card_opened', { id, name: VENTURES[id].name });
   }, [clearCloseTimer]);
 
   const scheduleClose = React.useCallback(() => {
@@ -1600,6 +1721,19 @@ function VenturePopover({ venture, getAnchor, onClose, onScheduleClose, onCancel
           <button className="kpim-close" onClick={onClose}>×</button>
         </div>
         <div className="kpim-body ventm-body">
+          {venture.coverImage && (
+            <figure className="ventm-cover">
+              <img
+                src={venture.coverImage}
+                alt={venture.coverAlt || `${venture.name} sample book cover`}
+                width={340}
+                height={340}
+                loading="lazy"
+                decoding="async"
+              />
+              <figcaption>sample personalised cover</figcaption>
+            </figure>
+          )}
           <div className="ventm-status">{venture.status}</div>
           <h3 className="ventm-name" id="ventm-title">{venture.name}</h3>
           <div className="ventm-meta">
@@ -1621,10 +1755,10 @@ function VenturePopover({ venture, getAnchor, onClose, onScheduleClose, onCancel
                 href={venture.press.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                onClick={() => window.posthog?.capture('venture_press_link', {
-                  id: venture.id,
-                  press: venture.press.id,
-                })}
+                onClick={() => {
+                  capturePh('venture_press_link', { id: venture.id, press: venture.press.id });
+                  captureOutbound(venture.press.url, 'venture_press', { id: venture.id, press: venture.press.id });
+                }}
               >
                 {venture.press.series} · {venture.press.date} ↗
               </a>
@@ -1645,10 +1779,10 @@ function VenturePopover({ venture, getAnchor, onClose, onScheduleClose, onCancel
                 href={venture.press.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                onClick={() => window.posthog?.capture('venture_press_link', {
-                  id: venture.id,
-                  press: venture.press.id,
-                })}
+                onClick={() => {
+                  capturePh('venture_press_link', { id: venture.id, press: venture.press.id });
+                  captureOutbound(venture.press.url, 'venture_press', { id: venture.id, press: venture.press.id });
+                }}
               >
                 press ↗
               </a>
@@ -1659,7 +1793,10 @@ function VenturePopover({ venture, getAnchor, onClose, onScheduleClose, onCancel
                 href={venture.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                onClick={() => window.posthog?.capture('venture_external_link', { id: venture.id })}
+                onClick={() => {
+                  capturePh('venture_external_link', { id: venture.id });
+                  captureOutbound(venture.url, 'venture_site', { id: venture.id });
+                }}
               >
                 site ↗
               </a>
@@ -1693,6 +1830,8 @@ function TabReadme() {
         products: digital and musical ideas alike. AI gave me superpowers. I&apos;m only
         limited by my imagination (and token budget).
       </p>
+
+      <CmdkPromo />
 
       <div className="readme-tldr">
         <div className="readme-tldr-label">tldr</div>
@@ -1808,7 +1947,10 @@ function ReadmePress() {
               href={item.url}
               target="_blank"
               rel="noopener noreferrer"
-              onClick={() => window.posthog?.capture('press_mention_click', { id: item.id })}
+              onClick={() => {
+                capturePh('press_mention_click', { id: item.id });
+                captureOutbound(item.url, 'press_mention', { id: item.id });
+              }}
             >
               <span className="readme-press-outlet">{item.outlet} · {item.series}</span>
               <span className="readme-press-title">{item.title}</span>
@@ -1902,7 +2044,7 @@ function KPIs() {
         {KPI_DATA.map((k, i) => (
           <div className={`kpi k-${i+1}`}
                key={k.id}
-               onClick={() => { setOpen(k.id); window.posthog?.capture('kpi_clicked', { id: k.id, label: k.label }); }}
+               onClick={() => { setOpen(k.id); capturePh('kpi_clicked', { id: k.id, label: k.label }); }}
                role="button"
                tabIndex={0}>
             <div className="k-spark">{k.spark} <span className="acc">●</span></div>
@@ -1926,7 +2068,12 @@ function KPIModal({ kpi, onClose }) {
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, [onClose]);
-  return (
+  React.useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, []);
+  return createPortal(
     <div className="kpim-back" onClick={onClose}>
       <div className={`kpim ${dragging ? 'dragging' : ''}`}
            onClick={(e) => e.stopPropagation()}
@@ -1968,7 +2115,8 @@ function KPIModal({ kpi, onClose }) {
           <button className="kpim-foot-btn" onClick={onClose}>close</button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -2095,7 +2243,13 @@ function Timeline() {
           <div key={i}
                ref={(el) => { rowRefs.current[i] = el; }}
                className={`tl-row ${open[i] ? 'open' : ''} ${matches(m) ? '' : 'hidden'}`}
-               onClick={() => { setOpen(o => ({ ...o, [i]: !o[i] })); window.posthog?.capture('milestone_expanded', { milestone: m.title, year: m.yStart }); }}>
+               onClick={() => {
+                 setOpen(o => {
+                   const next = !o[i];
+                   if (next) capturePh('milestone_expanded', { milestone: m.title, year: m.yStart });
+                   return { ...o, [i]: next };
+                 });
+               }}>
             <div className="tl-year-col">
               <b>{m.yStart}</b>
               <span>{m.year}</span>
@@ -2105,7 +2259,10 @@ function Timeline() {
                 {m.title}
                 {m.url && (
                   <a className="tl-link" href={m.url} target="_blank" rel="noreferrer"
-                     onClick={(e) => e.stopPropagation()}
+                     onClick={(e) => {
+                       e.stopPropagation();
+                       captureOutbound(m.url, 'timeline_milestone', { milestone: m.title });
+                     }}
                      title={m.url.replace(/^https?:\/\//,'')}>↗</a>
                 )}
                 <span className={`pill ${m.tagClass}`}>{m.tag}</span>
@@ -2451,6 +2608,28 @@ function Sparkline({ data, color }) {
 /* ─── Phase 3 — PostHog showcase widgets ─── */
 const PH_DASHBOARD_URL = 'https://us.posthog.com/project/436808/dashboard/1620520';
 
+/** Custom events advertised on the Live tab — keep in sync with capture() calls below. */
+const LIVE_CUSTOM_EVENTS = [
+  'kpi_clicked',
+  'milestone_expanded',
+  'survey_responded',
+  'live_widget_loaded',
+  'survey_shown',
+];
+
+const captureOnceKeys = new Set();
+function capturePh(event, properties) {
+  window.posthog?.capture(event, properties);
+}
+function capturePhOnce(event, properties) {
+  if (captureOnceKeys.has(event)) return;
+  captureOnceKeys.add(event);
+  capturePh(event, properties);
+}
+function captureOutbound(url, label, extra) {
+  capturePh('outbound_link_clicked', { url, label, ...extra });
+}
+
 function usePhStats() {
   const [s, setS] = React.useState(null);
   React.useEffect(() => {
@@ -2521,7 +2700,8 @@ function YourSession() {
     <div className="ph-card ph-session">
       <div className="ph-card-head">
         <span><span className="live-dot"></span> your session — being recorded</span>
-        <a className="ph-link" href={replayUrl} target="_blank" rel="noreferrer">
+        <a className="ph-link" href={replayUrl} target="_blank" rel="noreferrer"
+           onClick={() => captureOutbound(replayUrl, 'session_replay')}>
           watch yourself in PostHog ↗
         </a>
       </div>
@@ -2536,15 +2716,17 @@ function YourSession() {
 
 function FunnelOfYou() {
   const STEPS = [
-    { id: 'loaded',    label: 'loaded the dashboard',     event: null },
+    { id: 'loaded',    label: 'loaded the dashboard',     event: '$pageview' },
     { id: 'milestone', label: 'expanded a timeline milestone', event: 'milestone_expanded' },
     { id: 'kpi',       label: 'opened a KPI breakdown',   event: 'kpi_clicked' },
     { id: 'survey',    label: 'answered the survey',      event: 'survey_responded' },
   ];
-  const [done, setDone] = React.useState({ loaded: true });
+  const [done, setDone] = React.useState({});
   React.useEffect(() => {
     const ph = window.posthog;
     if (!ph || typeof ph.on !== 'function') return;
+    // Autocaptured pageview usually fires before this widget mounts.
+    setDone(d => ({ ...d, loaded: true }));
     let off;
     try {
       off = ph.on('eventCaptured', (e) => {
@@ -2567,7 +2749,7 @@ function FunnelOfYou() {
           <li key={s.id} className={done[s.id] ? 'on' : ''}>
             <span className="ph-tick">{done[s.id] ? '✓' : String(i+1).padStart(2,'0')}</span>
             <span className="ph-step">{s.label}</span>
-            <span className="ph-evt">{s.event ? `event: ${s.event}` : 'mount'}</span>
+            <span className="ph-evt">{s.event ? `event: ${s.event}` : ''}</span>
           </li>
         ))}
       </ol>
@@ -2584,7 +2766,7 @@ function PostHogPowered() {
     { label: 'surveys',               meta: '1 active · popover on /posthog · 8s delay' },
     { label: 'feature flags',         meta: 'dashboard-theme · multivariate · 80/10/10' },
     { label: 'hogql via worker',      meta: 'this widget runs SQL against your PostHog' },
-    { label: 'custom events',         meta: 'kpi_clicked · milestone_expanded · survey_responded · live_widget_loaded · survey_shown' },
+    { label: 'custom events',         meta: LIVE_CUSTOM_EVENTS.join(' · ') },
     { label: 'person profiles + geoip', meta: stats?.locations?.length ? `${stats.locations.length} recent cities, enriched` : 'city · country · referrer' },
     { label: 'cohort signal',         meta: stats?.highIntent != null ? `${stats.highIntent} high-intent visitors (30d) · ≥1 deep interaction` : 'high-intent: ≥1 deep interaction' },
     { label: 'saved dashboard',       meta: '3 tiles · pageviews · custom events · by country' },
@@ -2593,7 +2775,8 @@ function PostHogPowered() {
     <div className="ph-card ph-powered">
       <div className="ph-card-head">
         <span>instrumented with PostHog</span>
-        <a className="ph-link" href={PH_DASHBOARD_URL} target="_blank" rel="noreferrer">
+        <a className="ph-link" href={PH_DASHBOARD_URL} target="_blank" rel="noreferrer"
+           onClick={() => captureOutbound(PH_DASHBOARD_URL, 'posthog_dashboard')}>
           live PostHog dashboard ↗
         </a>
       </div>
@@ -2618,7 +2801,7 @@ function PostHogPowered() {
 function LiveLoop() {
   const stats = usePhStats();
   const [tick, setTick] = React.useState(0);
-  React.useEffect(() => { window.posthog?.capture('live_widget_loaded'); }, []);
+  React.useEffect(() => { capturePhOnce('live_widget_loaded'); }, []);
   // Cosmetic tick so timestamps re-render every few seconds.
   React.useEffect(() => {
     const id = setInterval(() => setTick(t => t + 1), 4000);
@@ -2722,7 +2905,7 @@ function LiveLoop() {
 function Survey() {
   const stats = usePhStats();
   const [picked, setPicked] = React.useState(null);
-  React.useEffect(() => { window.posthog?.capture('survey_shown'); }, []);
+  React.useEffect(() => { capturePhOnce('survey_shown'); }, []);
 
   // Real tally from PostHog (in-page survey_responded + native popover responses).
   // Fall back to representative numbers until first responses land.
@@ -2746,7 +2929,7 @@ function Survey() {
           <button
             key={o}
             className={picked === o ? 'picked' : ''}
-            onClick={() => { setPicked(o); window.posthog?.capture('survey_responded', { answer: o }); }}>
+            onClick={() => { setPicked(o); capturePh('survey_responded', { answer: o }); }}>
             {o}
           </button>
         ))}
@@ -3057,6 +3240,9 @@ function App() {
   const [tagFilter, setTagFilter] = React.useState('ALL');
   const [terminalId, setTerminalId] = React.useState(null);
   const [paletteOpen, setPaletteOpen] = React.useState(false);
+  const [paletteReason, setPaletteReason] = React.useState(null);
+  const [cmdkDiscovered, markCmdkDiscovered] = useCmdkDiscovered();
+  const [cmdkNudge, noteCmdkTabVisit] = useCmdkNudge(cmdkDiscovered);
   const [quitting, setQuitting] = React.useState(false);
   const [shutdown, setShutdown] = React.useState(false);
   const winRef = React.useRef(null);
@@ -3123,18 +3309,47 @@ function App() {
     return () => window.removeEventListener('ph-theme', h);
   }, []);
 
+  const openPalette = React.useCallback((source = 'shortcut') => {
+    markCmdkDiscovered();
+    setPaletteReason(source === 'exit' || source === 'exit_intent' ? 'exit' : null);
+    setPaletteOpen(true);
+    capturePh('command_palette_opened', { source });
+  }, [markCmdkDiscovered]);
+
+  const closePalette = React.useCallback(() => {
+    setPaletteOpen(false);
+    setPaletteReason(null);
+  }, []);
+
   // keyboard
   React.useEffect(() => {
     const onKey = (e) => {
       const meta = e.metaKey || e.ctrlKey;
-      if (meta && e.key === 'k') { e.preventDefault(); setPaletteOpen(true); }
+      if (meta && e.key.toLowerCase() === 'k') { e.preventDefault(); openPalette('shortcut'); }
+      if (meta && e.key.toLowerCase() === 'q') { e.preventDefault(); openPalette('exit'); }
       if (meta && e.key === '0') { e.preventDefault(); resetWindow(); }
       if (meta && e.key === 'o') { e.preventDefault(); window.open('Batsirai-Chada-Resume.pdf', '_blank'); }
       if (meta && e.key === 'm') { e.preventDefault(); setTweak('showMiniPlayer', !t.showMiniPlayer); }
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [t.showMiniPlayer]);
+  }, [t.showMiniPlayer, openPalette]);
+
+  // exit intent — mouse leaves toward browser chrome / another tab
+  React.useEffect(() => {
+    if (paletteOpen) return;
+    const onMouseOut = (e) => {
+      if (e.clientY > 12) return;
+      if (e.relatedTarget || e.toElement) return;
+      try {
+        if (sessionStorage.getItem(CMDK_EXIT_INTENT_KEY) === '1') return;
+        sessionStorage.setItem(CMDK_EXIT_INTENT_KEY, '1');
+      } catch {}
+      openPalette('exit_intent');
+    };
+    document.documentElement.addEventListener('mouseout', onMouseOut);
+    return () => document.documentElement.removeEventListener('mouseout', onMouseOut);
+  }, [paletteOpen, openPalette]);
 
   function resetWindow() {
     document.querySelector('.window-wrap')?.style.setProperty('transform', 'translate(0,0)');
@@ -3143,7 +3358,14 @@ function App() {
     setTerminalId('snapshot_unsupported_demo');
     setTimeout(() => window.print(), 200);
   }
-  function quit() {
+  React.useEffect(() => { noteCmdkTabVisit(tab); }, [tab, noteCmdkTabVisit]);
+
+  const goTab = React.useCallback((id) => {
+    setTab(id);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
+
+  function shutdownApp() {
     setQuitting(true);
     setTimeout(() => setShutdown(true), 520);
     setTimeout(() => { setShutdown(false); setQuitting(false); }, 2800);
@@ -3156,15 +3378,17 @@ function App() {
     showGrain: t.showGrain, setShowGrain: (v) => setTweak('showGrain', v),
     showWallpaper: t.showWallpaper, setShowWallpaper: (v) => setTweak('showWallpaper', v),
     showMiniPlayer: t.showMiniPlayer, setShowMiniPlayer: (v) => setTweak('showMiniPlayer', v),
-    tab, setTab: (id) => { setTab(id); window.scrollTo({ top: 0, behavior: 'smooth' }); },
-    tagFilter, setTagFilter: (v) => { setTab('timeline'); setTagFilter(v); },
+    tab, setTab: goTab,
+    tagFilter, setTagFilter: (v) => { goTab('timeline'); setTagFilter(v); },
     jumpTo: (sectId) => {
       const map = { 's-kpis':'readme', 's-timeline':'timeline', 's-exp':'exp', 's-values':'values', 's-commits':'building', 's-music':'music', 's-live':'live' };
-      setTab(map[sectId] || 'readme');
+      goTab(map[sectId] || 'readme');
     },
     runScript: (id) => setTerminalId(id),
-    openPalette: () => setPaletteOpen(true),
-    resetWindow, snapshot, quit,
+    openPalette,
+    cmdkDiscovered,
+    cmdkNudge,
+    resetWindow, snapshot, shutdownApp,
     _registerTL: (api) => { tlApi.current = api; },
     tlExpandAll: (v) => tlApi.current?.expandAll(v),
     jumpToMilestone: (idx, flash) => tlApi.current?.jumpToMilestone(idx, flash),
@@ -3173,53 +3397,55 @@ function App() {
   const commands = [
     { label: 'Open resume.pdf', cat: 'file', run: () => window.open('Batsirai-Chada-Resume.pdf', '_blank') },
     { label: 'Print dashboard',  cat: 'file', run: () => window.print() },
-    { label: 'Quit application', cat: 'file', run: () => quit() },
+    { label: 'Quit application', cat: 'file', run: () => shutdownApp() },
     { label: 'Run · why_hire.sh',           cat: 'run', run: () => setTerminalId('why_hire') },
     { label: 'Run · apply_to_posthog.sh',   cat: 'run', run: () => setTerminalId('apply') },
     { label: 'Run · benchmark_vs_role.sh',  cat: 'run', run: () => setTerminalId('benchmark') },
     { label: 'Run · check_availability.sh', cat: 'run', run: () => setTerminalId('availability') },
     { label: 'Run · ping_batsirai.sh',      cat: 'run', run: () => setTerminalId('ping') },
-    { label: 'Tab · Bio',         cat: 'go', run: () => setTab('readme') },
-    { label: 'Tab · Timeline',    cat: 'go', run: () => setTab('timeline') },
-    { label: 'Tab · Experiments', cat: 'go', run: () => setTab('exp') },
-    { label: 'Tab · Values',      cat: 'go', run: () => setTab('values') },
-    { label: 'Tab · Building',    cat: 'go', run: () => setTab('building') },
-    { label: 'Tab · Music',       cat: 'go', run: () => setTab('music') },
-    { label: 'Tab · Live',        cat: 'go', run: () => setTab('live') },
+    { label: 'Tab · Bio',         cat: 'go', run: () => goTab('readme') },
+    { label: 'Tab · Timeline',    cat: 'go', run: () => goTab('timeline') },
+    { label: 'Tab · Experiments', cat: 'go', run: () => goTab('exp') },
+    { label: 'Tab · Values',      cat: 'go', run: () => goTab('values') },
+    { label: 'Tab · Building',    cat: 'go', run: () => goTab('building') },
+    { label: 'Tab · Music',       cat: 'go', run: () => goTab('music') },
+    { label: 'Tab · Live',        cat: 'go', run: () => goTab('live') },
     { label: 'Theme · PostHog',  cat: 'view', run: () => setTweak('palette','posthog') },
     { label: 'Theme · Apple',    cat: 'view', run: () => setTweak('palette','apple') },
     { label: 'Theme · Terminal', cat: 'view', run: () => setTweak('palette','terminal') },
     { label: 'Toggle desktop icons', cat: 'view', run: () => setTweak('showDesktop', !t.showDesktop) },
     { label: 'Toggle wallpaper',     cat: 'view', run: () => setTweak('showWallpaper', !t.showWallpaper) },
-    { label: 'Filter · built milestones', cat: 'career', run: () => { setTab('timeline'); setTagFilter('BUILT'); } },
-    { label: 'Filter · founded milestones', cat: 'career', run: () => { setTab('timeline'); setTagFilter('FOUNDED'); } },
-    { label: 'Filter · exited milestones', cat: 'career', run: () => { setTab('timeline'); setTagFilter('EXITED'); } },
+    { label: 'Filter · built milestones', cat: 'career', run: () => { goTab('timeline'); setTagFilter('BUILT'); } },
+    { label: 'Filter · founded milestones', cat: 'career', run: () => { goTab('timeline'); setTagFilter('FOUNDED'); } },
+    { label: 'Filter · exited milestones', cat: 'career', run: () => { goTab('timeline'); setTagFilter('EXITED'); } },
     { label: 'Help · about batsirai.os', cat: 'help', run: () => setTerminalId('about') },
     { label: 'Help · keyboard shortcuts', cat: 'help', run: () => setTerminalId('keys') },
   ];
 
   const leftIcons = [
     { glyph: "▤", label: "bio", sub: "start here", tab: 'readme',
-      onClick: () => setTab('readme') },
+      onClick: () => goTab('readme') },
     { glyph: "⧖", label: "timeline", sub: "15 yrs", acc: "acc-mustard", tab: 'timeline',
-      onClick: () => setTab('timeline') },
+      onClick: () => goTab('timeline') },
     { glyph: "ƒ", label: "experiments", sub: "7 logged", acc: "acc-brick", tab: 'exp',
-      onClick: () => setTab('exp') },
+      onClick: () => goTab('exp') },
     { glyph: "✮", label: "values", sub: "in practice", acc: "acc-plum", tab: 'values',
-      onClick: () => setTab('values') },
+      onClick: () => goTab('values') },
     { glyph: "{}", label: "building", sub: "live commits", acc: "acc-ink", tab: 'building',
-      onClick: () => setTab('building') },
+      onClick: () => goTab('building') },
     { glyph: "♪", label: "music", sub: "preview listen", tab: 'music',
-      onClick: () => setTab('music') },
+      onClick: () => goTab('music') },
     { glyph: "◐", label: "live loop", sub: "this page", acc: "acc-forest", badge: "LIVE", tab: 'live',
-      onClick: () => setTab('live') },
+      onClick: () => goTab('live') },
   ];
   const rightIcons = [
     { glyph: "$", label: "resume", sub: ".pdf", acc: "acc-brick", badge: "PDF", href: "Batsirai-Chada-Resume.pdf" },
     { glyph: "✉", label: "email", sub: "say hi", acc: "acc-plum", href: "mailto:batsirai@gmail.com" },
     { glyph: "in", label: "linkedin", sub: "batsirai-chada", href: "https://linkedin.com" },
     { glyph: "↗", label: "github", sub: "@batsirai", acc: "acc-ink", href: "https://github.com" },
-    { glyph: "⌘K", label: "command", sub: "palette", acc: "acc-mustard", onClick: () => setPaletteOpen(true) },
+    { glyph: "⌘K", label: "command", sub: "palette", acc: "acc-mustard",
+      badge: cmdkDiscovered ? null : (cmdkNudge ? "→" : "TRY"),
+      onClick: () => openPalette('desktop') },
   ];
 
   return (
@@ -3244,7 +3470,7 @@ function App() {
 
         <DraggableWindow
           title="career.dashboard — batsirai.chada"
-          meta={<><span>auto-refresh: on</span><span style={{cursor:'pointer'}} onClick={() => setPaletteOpen(true)}>⌘K</span></>}>
+          meta={<><span>auto-refresh: on</span><CmdkTrigger compact nudge={cmdkNudge && !cmdkDiscovered} /></>}>
           <div className="window-body">
             <ProfileSidebar />
             <TabbedMain />
@@ -3259,7 +3485,7 @@ function App() {
           onRun={(id) => setTerminalId(id)} />
       )}
       {paletteOpen && (
-        <CommandPalette commands={commands} onClose={() => setPaletteOpen(false)} />
+        <CommandPalette commands={commands} reason={paletteReason} onClose={closePalette} />
       )}
       {t.showMiniPlayer && <MiniPlayer onClose={() => setTweak('showMiniPlayer', false)} />}
       {quitting && (

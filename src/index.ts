@@ -1,5 +1,6 @@
 import homeHtml from "./home.html";
 import photo from "./photo.jpg";
+import alreadyLovedCover from "./already-loved-book-cover.png";
 
 interface Env {
 	ASSETS: Fetcher;
@@ -87,7 +88,7 @@ async function fetchStats(env: Env): Promise<StatsBody> {
 				k,
 			),
 			hogql(
-				"SELECT count(DISTINCT distinct_id) FROM events WHERE event IN ('milestone_expanded','kpi_clicked','outbound_link_clicked') AND timestamp > now() - INTERVAL 30 DAY",
+				"SELECT count(DISTINCT distinct_id) FROM events WHERE event IN ('milestone_expanded','kpi_clicked','outbound_link_clicked','survey_responded','venture_card_opened') AND timestamp > now() - INTERVAL 30 DAY",
 				k,
 			),
 			hogql(
@@ -169,6 +170,15 @@ export default {
 			return new Response(photo, {
 				headers: {
 					"content-type": "image/jpeg",
+					"cache-control": "public, max-age=86400",
+				},
+			});
+		}
+
+		if (url.pathname === "/already-loved-book-cover.png") {
+			return new Response(alreadyLovedCover, {
+				headers: {
+					"content-type": "image/png",
 					"cache-control": "public, max-age=86400",
 				},
 			});

@@ -28,7 +28,7 @@
 		},
 		{
 			"type": "Data",
-			"globs": ["**/*.jpg"],
+			"globs": ["**/*.jpg", "**/*.png"],
 			"fallthrough": true
 		}
 	]
