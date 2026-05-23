@@ -749,7 +749,7 @@ const SCRIPTS = {
       { out: "01  shipped 9 products across SaaS, marketplaces, AI, creator tools.", b: ['9'] },
       { out: "02  founded → exited twice. SongSuggest (sold) + Quickstaff (sold 2022)." },
       { out: "03  ran experiments with money attached — $2M VAT recovered, +11% activation." },
-      { out: "04  currently shipping Already Loved + AI Founder in Residence at Ensurall." },
+      { out: "04  currently shipping Already Loved + product shipper at Ensurall." },
       { wait: 220 },
       { out: "→ verdict: hires builders who can produce numbers and tell the story.", kind: 'ok' },
       { out: "→ that is, demonstrably, my entire career.", kind: 'ok' },
@@ -1273,7 +1273,7 @@ function ProfileSidebar() {
           <dt>Pineapple on pizza</dt><dd><span className="ps-thumb">👍</span></dd>
           <dt>Located</dt><dd>Toronto, CA 🇨🇦</dd>
           <dt>Currently shipping</dt><dd>Already Loved</dd>
-          <dt>Day job</dt><dd>AI Product | Ensurall</dd>
+          <dt>Day job</dt><dd>Product shipper · Ensurall</dd>
           <dt>Looking at</dt><dd>PostHog · Tech Founder</dd>
         </dl>
       </section>
@@ -1451,10 +1451,10 @@ const VENTURES = {
     id: 'ensurall',
     name: 'Ensurall · GVC',
     years: '2010–2022 · 2023–present',
-    role: 'AI Founder in Residence (current) · PM / architect (first stint)',
+    role: 'Product shipper (current) · product manager (2010–2022)',
     status: 'Day job · exclusive engagement',
     tagline: 'Extended car warranty · B2B + B2C commerce',
-    summary: 'Architected ensurall.ca and the warranty commerce stack from 2010. Left for Buffer in 2022, came back in 2023 because quasi-founder work fits me better. Now I find ideas, design them, and ship 2–3 micro-projects a week with stakeholders.',
+    summary: 'Architected ensurall.ca and the warranty commerce stack from 2010 as PM. Left for Buffer in 2022, came back in 2023 because shipping beats spec-writing. Now I find ideas, design them, and ship 2–3 micro-projects a week — the joy is still saying “here, I made this”.',
     stack: 'Visualforce · Apex · JavaScript',
     url: 'https://ensurall.ca',
     timelineTitle: 'Ensurall',
@@ -1628,6 +1628,11 @@ function useVenturePopoverState() {
   return { state, ctx };
 }
 
+function isVentureUiNode(node) {
+  if (!node || !(node instanceof Node)) return false;
+  return Boolean(node.closest?.('.ventm-pop, .cover-lb-back'));
+}
+
 function VentureLink({ id, children, className = '' }) {
   const ctx = React.useContext(VentureCtx);
   const ref = React.useRef(null);
@@ -1646,7 +1651,10 @@ function VentureLink({ id, children, className = '' }) {
       onMouseEnter={show}
       onMouseLeave={ctx.scheduleClose}
       onFocus={show}
-      onBlur={ctx.scheduleClose}
+      onBlur={(e) => {
+        if (isVentureUiNode(e.relatedTarget)) return;
+        ctx.scheduleClose();
+      }}
       onClick={(e) => {
         e.preventDefault();
         if (isActive) ctx.close();
@@ -1659,6 +1667,8 @@ function VentureLink({ id, children, className = '' }) {
 }
 
 function VentureCoverLightbox({ src, alt, onClose }) {
+  const ignoreBackdropUntil = React.useRef(Date.now() + 320);
+
   React.useEffect(() => {
     const onKey = (e) => {
       if (e.key === 'Escape') {
@@ -1675,8 +1685,14 @@ function VentureCoverLightbox({ src, alt, onClose }) {
     };
   }, [onClose]);
 
+  function handleBackdropClick(e) {
+    if (e.target !== e.currentTarget) return;
+    if (Date.now() < ignoreBackdropUntil.current) return;
+    onClose();
+  }
+
   return createPortal(
-    <div className="cover-lb-back" onClick={onClose} role="dialog" aria-modal="true" aria-label="Book cover preview">
+    <div className="cover-lb-back" onClick={handleBackdropClick} role="dialog" aria-modal="true" aria-label="Book cover preview">
       <figure className="cover-lb" onClick={(e) => e.stopPropagation()}>
         <button type="button" className="cover-lb-close" onClick={onClose} aria-label="Close cover preview">×</button>
         <img src={src} alt={alt} width={680} height={680} decoding="async" />
@@ -1733,15 +1749,25 @@ function VenturePopover({ venture, getAnchor, onClose, onScheduleClose, onCancel
     }
   }
 
+  function openCover(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    onCancelClose();
+    setCoverOpen(true);
+    capturePh('venture_cover_open', { id: venture.id });
+  }
+
   const popover = createPortal(
     <div
       ref={popRef}
-      className={`ventm-pop ventm-pop--${layout.place}`}
+      className={`ventm-pop ventm-pop--${layout.place}${venture.coverImage ? ' ventm-pop--with-cover' : ''}`}
       style={{ top: layout.top, left: layout.left }}
       role="dialog"
       aria-labelledby="ventm-title"
       onMouseEnter={onCancelClose}
-      onMouseLeave={onScheduleClose}
+      onMouseLeave={() => {
+        if (!coverOpen) onScheduleClose();
+      }}
     >
       <div className="kpim ventm">
         <div className="kpim-titlebar">
@@ -1754,57 +1780,61 @@ function VenturePopover({ venture, getAnchor, onClose, onScheduleClose, onCancel
           <button className="kpim-close" onClick={onClose}>×</button>
         </div>
         <div className="kpim-body ventm-body">
-          <div className="ventm-status">{venture.status}</div>
-          <h3 className="ventm-name" id="ventm-title">{venture.name}</h3>
-          <div className="ventm-meta">
-            <span>{venture.years}</span>
-            <span className="ventm-dot">·</span>
-            <span>{venture.role}</span>
+          <div className={venture.coverImage ? 'ventm-layout ventm-layout--cover' : 'ventm-layout'}>
+            {venture.coverImage && (
+              <div className="ventm-cover-col">
+                <button
+                  type="button"
+                  className="ventm-cover-thumb"
+                  onClick={openCover}
+                  aria-label={`View sample ${venture.name} book cover`}
+                >
+                  <img
+                    src={venture.coverImage}
+                    alt=""
+                    width={104}
+                    height={104}
+                    loading="lazy"
+                    decoding="async"
+                    aria-hidden="true"
+                  />
+                  <span className="ventm-cover-thumb-label">view cover</span>
+                </button>
+              </div>
+            )}
+            <div className="ventm-copy-col">
+              <div className="ventm-status">{venture.status}</div>
+              <h3 className="ventm-name" id="ventm-title">{venture.name}</h3>
+              <div className="ventm-meta">
+                <span>{venture.years}</span>
+                <span className="ventm-dot">·</span>
+                <span>{venture.role}</span>
+              </div>
+              <p className="ventm-tagline">{venture.tagline}</p>
+              <p className="ventm-summary">{venture.summary}</p>
+              <div className="ventm-stack">
+                <span className="ventm-stack-label">stack</span>
+                <span>{venture.stack}</span>
+              </div>
+              {venture.press && (
+                <blockquote className="ventm-press">
+                  <p className="ventm-press-quote">&ldquo;{venture.press.quote}&rdquo;</p>
+                  <a
+                    className="ventm-press-link"
+                    href={venture.press.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() => {
+                      capturePh('venture_press_link', { id: venture.id, press: venture.press.id });
+                      captureOutbound(venture.press.url, 'venture_press', { id: venture.id, press: venture.press.id });
+                    }}
+                  >
+                    {venture.press.series} · {venture.press.date} ↗
+                  </a>
+                </blockquote>
+              )}
+            </div>
           </div>
-          <p className="ventm-tagline">{venture.tagline}</p>
-          <p className="ventm-summary">{venture.summary}</p>
-          <div className="ventm-stack">
-            <span className="ventm-stack-label">stack</span>
-            <span>{venture.stack}</span>
-          </div>
-          {venture.coverImage && (
-            <button
-              type="button"
-              className="ventm-cover-thumb"
-              onClick={() => {
-                setCoverOpen(true);
-                capturePh('venture_cover_open', { id: venture.id });
-              }}
-            >
-              <img
-                src={venture.coverImage}
-                alt=""
-                width={72}
-                height={72}
-                loading="lazy"
-                decoding="async"
-                aria-hidden="true"
-              />
-              <span className="ventm-cover-thumb-label">view sample cover</span>
-            </button>
-          )}
-          {venture.press && (
-            <blockquote className="ventm-press">
-              <p className="ventm-press-quote">&ldquo;{venture.press.quote}&rdquo;</p>
-              <a
-                className="ventm-press-link"
-                href={venture.press.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={() => {
-                  capturePh('venture_press_link', { id: venture.id, press: venture.press.id });
-                  captureOutbound(venture.press.url, 'venture_press', { id: venture.id, press: venture.press.id });
-                }}
-              >
-                {venture.press.series} · {venture.press.date} ↗
-              </a>
-            </blockquote>
-          )}
         </div>
         <div className="kpim-foot ventm-foot">
           <span>move away · <kbd>esc</kbd> to close</span>
@@ -1879,10 +1909,10 @@ function TabReadme() {
         <span className="underscore"></span>
       </h1>
       <p className="readme-lede">
-        Fifteen years of building and shipping. Serial founder — two exits. Ex-Buffer PM.
-        I&apos;ve sung in front of thousands. I love getting up every day to build and ship
-        products: digital and musical ideas alike. AI gave me superpowers. I&apos;m only
-        limited by my imagination (and token budget).
+        Through 2022 I was a product manager. Thanks to AI, I&apos;m a product shipper now — and I take
+        great joy in saying <em>here, I made this</em>. Fifteen years of building and shipping. Serial
+        founder — two exits. Ex-Buffer PM. I&apos;ve sung in front of thousands. I love getting up every
+        day to build and ship products: digital and musical ideas alike.
       </p>
 
       <CmdkPromo />
@@ -1892,7 +1922,7 @@ function TabReadme() {
         <ul>
           <li>Building <VentureLink id="already-loved"><em>Already Loved</em></VentureLink> with my wife — shipping toward an autonomous company</li>
           <li>9 products shipped · 2 exits · 330k+ users reached · $5M+/yr influenced</li>
-          <li>Day job: AI Founder in Residence at <VentureLink id="ensurall">Ensurall</VentureLink> — 2–3 micro-projects/week on Salesforce</li>
+          <li>Day job: product shipper at <VentureLink id="ensurall">Ensurall</VentureLink> — 2–3 micro-projects/week on Salesforce</li>
           <li>Applying to <VentureLink id="posthog">PostHog</VentureLink> to help founders run faster <b>build → ship → learn</b> loops</li>
         </ul>
       </div>
@@ -1909,8 +1939,8 @@ function TabReadme() {
 
       <div className="bio">
         <p>
-          What I love most is <b>building</b>. The wonder of finding out a stranger
-          on the other side of the world is using something I made in my basement
+          What I love most is pointing at something live and saying <em>here, I made this</em>. The wonder
+          of finding out a stranger on the other side of the world is using something I made in my basement
           never gets old. The first <VentureLink id="songsuggest">SongSuggest</VentureLink> user — somewhere we couldn't trace,
           maybe Dubai, maybe further. The first <VentureLink id="quickstaff">Quickstaff</VentureLink> customer in 2013 calling
           my co-founder to ask if they'd been charged by mistake. The first <VentureLink id="already-loved">Already Loved</VentureLink>
@@ -1924,15 +1954,18 @@ function TabReadme() {
           it to focus on <VentureLink id="already-loved"><b>Already Loved</b></VentureLink> with my wife.
         </p>
         <p>
-          I've spent <b>fifteen years</b> as the technical co-founder of whatever I was
-          working on. My own things — <VentureLink id="songsuggest"><b>SongSuggest</b></VentureLink> (sold), <VentureLink id="quickstaff"><b>Quickstaff</b></VentureLink> (sold 2022),
-          <VentureLink id="overflow"><b> The Overflow</b></VentureLink> (co-founded, wound down), <VentureLink id="cowriter">Cowriter</VentureLink>, my <VentureLink id="personal-agent">Personal Agent</VentureLink>, and now
-          <VentureLink id="already-loved"><b> Already Loved</b></VentureLink>. Other people's — <VentureLink id="buffer">Buffer</VentureLink>'s freemium growth, <VentureLink id="maverick-city">Maverick City</VentureLink>'s
-          digital ecosystem, the warranty portals at <VentureLink id="ensurall">Ensurall</VentureLink>. The shape of the work has always
-          been the same: see something that needs to ship, learn what you don't know, ship it.
+          I was a product manager through 2022 — at <VentureLink id="buffer">Buffer</VentureLink>, at{' '}
+          <VentureLink id="ensurall">Ensurall</VentureLink>, across founder work. Since AI became my
+          co-builder, I&apos;m a <b>product shipper</b>: see something that needs to exist, learn what you
+          don&apos;t know, ship it. My own things — <VentureLink id="songsuggest"><b>SongSuggest</b></VentureLink> (sold),{' '}
+          <VentureLink id="quickstaff"><b>Quickstaff</b></VentureLink> (sold 2022), <VentureLink id="overflow"><b> The Overflow</b></VentureLink>{' '}
+          (co-founded, wound down), <VentureLink id="cowriter">Cowriter</VentureLink>, my{' '}
+          <VentureLink id="personal-agent">Personal Agent</VentureLink>, and now <VentureLink id="already-loved"><b> Already Loved</b></VentureLink>.
+          Other people&apos;s — Buffer&apos;s freemium growth, <VentureLink id="maverick-city">Maverick City</VentureLink>&apos;s
+          digital ecosystem, the warranty portals at Ensurall.
         </p>
         <p>
-          Right now my day job is being the <b>AI Founder in Residence</b> at <VentureLink id="ensurall">Ensurall + GVC</VentureLink>.
+          Right now my day job is <b>product shipper</b> at <VentureLink id="ensurall">Ensurall + GVC</VentureLink>.
           I love the team, the autonomy, and the cadence — <b>two to three micro-projects a week</b>
           on a Salesforce stack. But in the end, we sell car warranties. I'd love to
           spend my days helping <em>founders</em> build autonomous companies — powered and
@@ -2058,7 +2091,7 @@ const KPI_DATA = [
       { name: "First LLM product",      v: "2023 · Cowriter"    },
       { name: "First AI agent product", v: "2025 · Personal Agent"    },
       { name: "Current focus",          v: "Already Loved"      },
-      { name: "Day job (since 2010)",   v: "Ensurall · AI Producer" },
+      { name: "Day job (since 2010)",   v: "Ensurall · Product shipper" },
     ],
     note: "twenty-five years coding. fifteen of them shipping product I was on the hook for.",
   },
@@ -2189,12 +2222,12 @@ const MILESTONES = [
     tag: "AGENT SKILLS AUTHOR", tagClass: "tag-experiment", built: true,
     url: "https://www.shopclawmart.com/creators/41476833-3478-44b6-8843-062f7c70955b",
     detail: "A real experiment in what an agent-run business can do. Two personas authoring 39 skills between them, 260+ sales / downloads so far — every skill agent-built and agent-deployed. I'm reading the meters; the agent is shipping." },
-  { year: "2023–present", yStart: 2023, title: "Ensurall · AI Tech Founder",
-    type: "AI Founder in Residence · independent · exclusive engagement",
+  { year: "2023–present", yStart: 2023, title: "Ensurall · Product shipper",
+    type: "Product shipper · independent · exclusive engagement",
     impact: "5× shipping cadence · 2–3 micro-projects/wk · Salesforce stack",
-    tag: "AI TECH FOUNDER", tagClass: "tag-founded", built: true,
+    tag: "PRODUCT SHIPPER", tagClass: "tag-founded", built: true,
     url: "https://ensurall.ca",
-    detail: "Came back to Ensurall after Buffer because I loved being a quasi-founder. Now I find product ideas, design them, and ship them in consultation with the stakeholders. Salesforce-stack company, so most of the surface is Salesforce. AI-assisted dev lets me push 2–3 micro-projects a week." },
+    detail: "Came back after Buffer because shipping beats spec-writing. I was a PM here through 2022; AI turned me into a product shipper. Now I find ideas, design them, and ship them — 2–3 micro-projects a week, mostly on Salesforce. The joy is still saying “here, I made this”." },
   { year: "2023", yStart: 2023, title: "Cowriter",
     type: "GPT-powered songwriting / lyric assistant",
     impact: "Shipped early LLM product · learned prompt engineering hands-on",
@@ -2268,7 +2301,7 @@ function Timeline() {
       case 'ALL':     return true;
       case 'BUILT':   return m.built === true;
       case 'FOUNDED': return /FOUNDED|CO-FOUNDED/.test(m.tag);
-      case 'LED':     return /LED|PRODUCT MANAGER|AI TECH FOUNDER/.test(m.tag);
+      case 'LED':     return /LED|PRODUCT MANAGER|PRODUCT SHIPPER|AI TECH FOUNDER/.test(m.tag);
       case 'EXITED':  return /EXITED/.test(m.tag);
       default:        return true;
     }
