@@ -28,6 +28,7 @@
 		"wrangler": "^4.16.0"
 	},
 	"dependencies": {
+		"@heroicons/react": "^2.2.0",
 		"posthog-js": "^1.376.0",
 		"react": "^19.2.6",
 		"react-dom": "^19.2.6"
