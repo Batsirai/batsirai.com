@@ -2667,3 +2667,33 @@ a.kpim-foot-btn.ventm-ext {
   .ph-powered-list li { grid-template-columns: 20px 1fr; }
   .ph-powered-list li .ph-pow-meta { grid-column: 2; }
 }
+
+/* "we see you" callout inside YourSession */
+.ph-whereami {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 14px 16px;
+  background: linear-gradient(90deg, rgba(214,159,46,0.18), rgba(184,68,45,0.08) 60%, transparent);
+  border-bottom: 1px dashed var(--rule-soft);
+  font-family: var(--sans);
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--ink);
+}
+.ph-whereami b { font-weight: 700; }
+.ph-whereami small {
+  display: inline; color: var(--muted); font-size: 11.5px;
+  font-family: var(--mono);
+  margin-left: 4px;
+}
+.ph-where-flag {
+  font-size: 22px;
+  line-height: 1;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.ph-mono-inline {
+  font-family: var(--mono); font-size: 12.5px;
+  background: var(--panel-2);
+  padding: 1px 6px;
+  border: 1px solid var(--rule-soft);
+}
