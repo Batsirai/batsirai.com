@@ -1,6 +1,7 @@
 import React from "react";
 import { createPortal } from "react-dom";
 import { DesktopAssetIcon, OsIcon } from "./os-icons.jsx";
+import { GALLERY_GROUPS, GALLERY_ITEMS, GALLERY_FILTERS, compareGalleryGroups } from "./gallery-data.js";
 
 
 // tweaks-panel.jsx
@@ -987,6 +988,7 @@ const FIRST_EXP_COLLAPSED_KEY = 'batsirai-first-exp-collapsed';
 const CMDK_NUDGE_AFTER_MS = 60_000;
 const CMDK_NUDGE_MIN_READ_MS = 20_000;
 const BOOK_CHAT_URL = 'https://calendar.app.google/LLHzx2oSeHBKtppG7';
+const POSTHOG_EX_FOUNDER_ROLE_URL = 'https://posthog.com/careers/technical-ex-founder';
 
 function useCmdkDiscovered() {
   const [discovered, setDiscovered] = React.useState(() => {
@@ -1461,6 +1463,7 @@ function TabbedMain() {
     { id: 'exp',     label: 'Experiments' },
     { id: 'values',  label: 'Values' },
     { id: 'building',label: 'Building' },
+    { id: 'gallery', label: 'Gallery' },
     { id: 'music',   label: 'Music' },
     { id: 'live',    label: 'Live' },
   ];
@@ -1551,9 +1554,20 @@ function TabbedMain() {
               subMobile="active builds · recent commits"
             />
             <div className="building-tab">
+              <BuilderCred />
               <ActiveBuilds />
               <Commits />
             </div>
+          </>
+        )}
+        {tab === 'gallery' && (
+          <>
+            <TabHeader
+              title="Gallery"
+              sub="41 items · UI I designed & shipped + Buffer off-sites"
+              subMobile="My UI work & culture · tap to enlarge"
+            />
+            <Gallery />
           </>
         )}
         {tab === 'music' && (
@@ -2076,9 +2090,6 @@ function TabReadme() {
   return (
     <VentureCtx.Provider value={ventureCtx}>
     <div className="readme">
-      <div className="readme-eyebrow">
-        // application :: technical_ex_founder @ posthog
-      </div>
       <FirstExperienceStrip />
       <h1 className="readme-h1">
         Builder. Shipper. Singer.
@@ -2709,6 +2720,27 @@ function Values() {
 }
 
 /* ─── Active builds (above commits in Building tab) ─── */
+const GITHUB_URL = 'https://github.com/Batsirai';
+
+function BuilderCred() {
+  const imgSrc = `${import.meta.env.BASE_URL}building/github-contributions.png`;
+  return (
+    <section className="builder-cred" aria-label="GitHub activity">
+      <a
+        className="builder-cred-shot"
+        href={GITHUB_URL}
+        target="_blank"
+        rel="noreferrer"
+        aria-label="View Batsirai on GitHub — 5,270 contributions in the last year">
+        <img src={imgSrc} alt="GitHub contribution graph — 5,270 contributions in the last year" loading="lazy" decoding="async" />
+      </a>
+      <a className="builder-cred-link" href={GITHUB_URL} target="_blank" rel="noreferrer">
+        github.com/Batsirai →
+      </a>
+    </section>
+  );
+}
+
 function ActiveBuilds() {
   return (
     <div className="ab-grid">
@@ -3069,19 +3101,26 @@ function FirstExperienceStrip() {
     );
   }
 
-  const head = fromPh ? 'If you\'re from PostHog' : 'Applying to PostHog';
+  const roleLink = (
+    <a
+      className="first-exp-role-link"
+      href={POSTHOG_EX_FOUNDER_ROLE_URL}
+      target="_blank"
+      rel="noreferrer"
+      onClick={() => capturePh('first_experience_role_link_click', { role: 'technical_ex_founder' })}
+    >
+      Technical Ex-Founder
+    </a>
+  );
   const copy = fromPh ? (
     <>
-      I made batsirai.os for you. Wander through it like an app, not a PDF: the tabs, the
-      ventures, the themes, the Live surface. If the experience feels like someone you want on
-      the team, I&apos;d love to talk about technical ex-founder, or whatever role you think
-      fits.
+      I made this for you — built to use, not read. Wander the tabs, ventures, themes, and Live
+      surface. If it feels like someone you want on the team, let&apos;s talk.
     </>
   ) : (
     <>
-      This is my application to PostHog, built as something you can actually use. Explore the
-      tabs, poke the Easter eggs, see how it feels. If it resonates, I&apos;m hoping we can talk
-      about the technical ex-founder path, or anywhere else I might belong.
+      Built to use, not read. Explore the tabs, poke the Easter eggs, see how it feels. If it
+      resonates, I&apos;m hoping we can talk.
     </>
   );
 
@@ -3093,12 +3132,18 @@ function FirstExperienceStrip() {
 
   return (
     <div className="first-exp" role="region" aria-label="Note to PostHog reviewers">
-      <div className="first-exp-head">
-        <span className="first-exp-kicker">{head}</span>
+      <p className="first-exp-moustache">what is this?</p>
+      <div className="first-exp-answer-row">
+        <p className="first-exp-mission">
+          An application to join or lead a small team at PostHog.
+        </p>
         <button type="button" className="first-exp-dismiss" onClick={dismiss} aria-label="Collapse">
           ×
         </button>
       </div>
+      <p className="first-exp-roles">
+        {roleLink} · or any product manager role
+      </p>
       <p className="first-exp-copy">{copy}</p>
       <div className="first-exp-explore-label">Start anywhere</div>
       <div className="first-exp-explore">
@@ -3496,6 +3541,110 @@ function SunoEmbed({ id, title }) {
         title={title}>
         <a href={`https://suno.com/song/${id}`}>Listen on Suno</a>
       </iframe>
+    </div>
+  );
+}
+
+function GalleryGrid({ items, onOpen }) {
+  return (
+    <div className="gallery-grid">
+      {items.map((item) => (
+        <button
+          key={item.id}
+          type="button"
+          className={`gallery-cell${item.span === 2 ? ' gallery-cell--wide' : ''}`}
+          onClick={() => onOpen(item)}
+          aria-label={`View ${item.title}`}>
+          <img src={item.src} alt="" loading="lazy" decoding="async" />
+          <span className="gallery-cell-cap">
+            <span className="gallery-cell-title">{item.title}</span>
+            <span className="gallery-cell-year">{item.year}</span>
+          </span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function GalleryLightbox({ item, onClose }) {
+  if (!item) return null;
+  return createPortal(
+    <div className="gallery-lightbox" role="dialog" aria-modal="true" aria-label={item.title}>
+      <button type="button" className="gallery-lightbox-backdrop" onClick={onClose} aria-label="Close" />
+      <figure className="gallery-lightbox-fig">
+        <img src={item.src} alt={item.title} />
+        <figcaption>
+          <span>{item.title}</span>
+          <span className="gallery-lightbox-year">{item.year}</span>
+        </figcaption>
+        <button type="button" className="gallery-lightbox-close" onClick={onClose} aria-label="Close">×</button>
+      </figure>
+    </div>,
+    document.body,
+  );
+}
+
+function Gallery() {
+  const [filter, setFilter] = React.useState('all');
+  const [lightbox, setLightbox] = React.useState(null);
+
+  React.useEffect(() => {
+    if (!lightbox) return;
+    const onKey = (e) => { if (e.key === 'Escape') setLightbox(null); };
+    document.body.style.overflow = 'hidden';
+    window.addEventListener('keydown', onKey);
+    return () => {
+      document.body.style.overflow = '';
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [lightbox]);
+
+  const groupMatches = (group) =>
+    filter === 'all' || (group.tags && group.tags.includes(filter));
+
+  const visibleGroups = GALLERY_GROUPS.filter(
+    (g) => groupMatches(g) && GALLERY_ITEMS.some((i) => i.group === g.id),
+  ).sort(compareGalleryGroups);
+
+  return (
+    <div className="gallery">
+      <p className="gallery-lede">
+        Every product interface here is work I designed and shipped myself — UI I owned
+        end to end. Buffer off-site photos are team culture; the rest is product.
+      </p>
+
+      <div className="gallery-filters" role="tablist" aria-label="Gallery filters">
+        {GALLERY_FILTERS.map((f) => (
+          <button
+            key={f.id}
+            type="button"
+            role="tab"
+            aria-selected={filter === f.id}
+            className={`gallery-filter${filter === f.id ? ' on' : ''}`}
+            onClick={() => setFilter(f.id)}>
+            {f.label}
+          </button>
+        ))}
+      </div>
+
+      {visibleGroups.map((group) => {
+        const items = GALLERY_ITEMS.filter((i) => i.group === group.id);
+        if (!items.length) return null;
+        return (
+          <section key={group.id} className="gallery-section" aria-labelledby={`gallery-${group.id}`}>
+            <div className="gallery-section-head">
+              <div className="gallery-section-meta">
+                <h3 className="gallery-section-title" id={`gallery-${group.id}`}>{group.label}</h3>
+                <span className="gallery-section-era">{group.era}</span>
+              </div>
+              <p className="gallery-section-desc">{group.blurb}</p>
+            </div>
+            <GalleryGrid items={items} onOpen={setLightbox} />
+          </section>
+        );
+      })}
+
+      <GalleryLightbox item={lightbox} onClose={() => setLightbox(null)} />
     </div>
   );
 }
@@ -3915,7 +4064,7 @@ function App() {
     tab, setTab: goTab,
     tagFilter, setTagFilter: (v) => { goTab('timeline'); setTagFilter(v); },
     jumpTo: (sectId) => {
-      const map = { 's-kpis':'readme', 's-timeline':'timeline', 's-exp':'exp', 's-values':'values', 's-commits':'building', 's-music':'music', 's-live':'live' };
+      const map = { 's-kpis':'readme', 's-timeline':'timeline', 's-exp':'exp', 's-values':'values', 's-commits':'building', 's-gallery':'gallery', 's-music':'music', 's-live':'live' };
       goTab(map[sectId] || 'readme');
     },
     runScript: (id) => setTerminalId(id),
@@ -3943,6 +4092,7 @@ function App() {
     { label: 'Tab · Experiments', cat: 'go', run: () => goTab('exp') },
     { label: 'Tab · Values',      cat: 'go', run: () => goTab('values') },
     { label: 'Tab · Building',    cat: 'go', run: () => goTab('building') },
+    { label: 'Tab · Gallery',     cat: 'go', run: () => goTab('gallery') },
     { label: 'Tab · Music',       cat: 'go', run: () => goTab('music') },
     { label: 'Tab · Live',        cat: 'go', run: () => goTab('live') },
     { label: 'Theme · PostHog',  cat: 'view', run: () => setTweak('palette','posthog') },
@@ -3968,6 +4118,8 @@ function App() {
       onClick: () => goTab('values') },
     { icon: "building", label: "building", sub: "live commits", acc: "acc-ink", tab: 'building',
       onClick: () => goTab('building') },
+    { icon: "gallery", label: "gallery", sub: "ui & culture", acc: "acc-plum", tab: 'gallery',
+      onClick: () => goTab('gallery') },
     { icon: "music", label: "music", sub: "preview listen", tab: 'music',
       onClick: () => goTab('music') },
     { icon: "live", label: "live loop", sub: "this page", acc: "acc-forest", badge: "LIVE", tab: 'live',
