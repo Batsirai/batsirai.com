@@ -16,6 +16,21 @@ posthog.init("phc_r9Xuec3PqRcydfxhfJQRPsJpvvNjNphCZi2ptLYRkr8Z", {
 });
 window.posthog = posthog;
 
+// When feature flags load, broadcast the dashboard-theme variant so the App
+// can apply it as the initial palette. Stored in a window slot so an App
+// instance that mounts AFTER the flags are ready still gets the value.
+posthog.onFeatureFlags(() => {
+	try {
+		const v = posthog.getFeatureFlag("dashboard-theme");
+		if (v && ["posthog", "apple", "terminal"].includes(v)) {
+			window.__ph_theme = v;
+			window.dispatchEvent(new CustomEvent("ph-theme", { detail: v }));
+		}
+	} catch {
+		/* posthog not ready yet */
+	}
+});
+
 createRoot(document.getElementById("root")).render(
 	<React.StrictMode>
 		<App />

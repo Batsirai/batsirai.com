@@ -12,7 +12,13 @@ interface Env {
 
 const PH_PROJECT_ID = 436808;
 const PH_HOST = "https://us.posthog.com";
+const PH_SURVEY_ID = "019e5311-0e15-0000-8fdb-1b1105559ffe";
 const STATS_CACHE_MS = 30_000;
+
+type RecentEvent = { e: string; city: string; country: string; ts: string };
+type RefRow = { host: string; count: number };
+type LocRow = { city: string; country: string };
+type TallyRow = { answer: string; count: number };
 
 type StatsBody = {
 	status: "ok" | "pending" | "error";
@@ -20,12 +26,14 @@ type StatsBody = {
 	live?: number;
 	weekUnique?: number;
 	weekEvents?: number;
-	referrers?: { host: string; count: number }[];
-	locations?: { city: string; country: string }[];
+	totalToday?: number;
+	highIntent?: number;
+	referrers?: RefRow[];
+	locations?: LocRow[];
+	recentEvents?: RecentEvent[];
+	surveyTally?: TallyRow[];
 };
 
-// Per-isolate cache — Cloudflare Workers reuse isolates for short windows,
-// so this naturally rate-limits PostHog API calls without an external KV.
 let statsCache: { ts: number; body: StatsBody } | null = null;
 
 async function hogql(query: string, key: string): Promise<unknown[]> {
@@ -51,29 +59,54 @@ async function fetchStats(env: Env): Promise<StatsBody> {
 	}
 	const k = env.PH_PERSONAL_KEY;
 	try {
-		const [live, weekUnique, weekEvents, referrers, locations] =
-			await Promise.all([
-				hogql(
-					"SELECT count(DISTINCT distinct_id) FROM events WHERE event = '$pageview' AND timestamp > now() - INTERVAL 5 MINUTE",
-					k,
-				),
-				hogql(
-					"SELECT count(DISTINCT distinct_id) FROM events WHERE event = '$pageview' AND timestamp > now() - INTERVAL 7 DAY",
-					k,
-				),
-				hogql(
-					"SELECT count() FROM events WHERE timestamp > now() - INTERVAL 7 DAY",
-					k,
-				),
-				hogql(
-					"SELECT coalesce(properties.$referring_domain, 'direct') AS r, count() AS c FROM events WHERE event = '$pageview' AND timestamp > now() - INTERVAL 7 DAY GROUP BY r ORDER BY c DESC LIMIT 5",
-					k,
-				),
-				hogql(
-					"SELECT DISTINCT properties.$geoip_city_name AS city, properties.$geoip_country_code AS country FROM events WHERE event = '$pageview' AND timestamp > now() - INTERVAL 1 DAY AND properties.$geoip_city_name != '' LIMIT 10",
-					k,
-				),
-			]);
+		const [
+			live,
+			weekUnique,
+			weekEvents,
+			totalToday,
+			highIntent,
+			referrers,
+			locations,
+			recent,
+			tally,
+		] = await Promise.all([
+			hogql(
+				"SELECT count(DISTINCT distinct_id) FROM events WHERE event = '$pageview' AND timestamp > now() - INTERVAL 5 MINUTE",
+				k,
+			),
+			hogql(
+				"SELECT count(DISTINCT distinct_id) FROM events WHERE event = '$pageview' AND timestamp > now() - INTERVAL 7 DAY",
+				k,
+			),
+			hogql(
+				"SELECT count() FROM events WHERE timestamp > now() - INTERVAL 7 DAY",
+				k,
+			),
+			hogql(
+				"SELECT count() FROM events WHERE timestamp > now() - INTERVAL 1 DAY",
+				k,
+			),
+			hogql(
+				"SELECT count(DISTINCT distinct_id) FROM events WHERE event IN ('milestone_expanded','kpi_clicked','outbound_link_clicked') AND timestamp > now() - INTERVAL 30 DAY",
+				k,
+			),
+			hogql(
+				"SELECT coalesce(properties.$referring_domain, 'direct') AS r, count() AS c FROM events WHERE event = '$pageview' AND timestamp > now() - INTERVAL 7 DAY GROUP BY r ORDER BY c DESC LIMIT 5",
+				k,
+			),
+			hogql(
+				"SELECT DISTINCT properties.$geoip_city_name AS city, properties.$geoip_country_code AS country FROM events WHERE event = '$pageview' AND timestamp > now() - INTERVAL 1 DAY AND properties.$geoip_city_name != '' LIMIT 10",
+				k,
+			),
+			hogql(
+				"SELECT event AS e, coalesce(properties.$geoip_city_name, '') AS city, coalesce(properties.$geoip_country_code, '') AS country, toString(timestamp) AS ts FROM events WHERE event NOT IN ('$pageleave','$autocapture','$web_vitals') AND timestamp > now() - INTERVAL 30 MINUTE ORDER BY timestamp DESC LIMIT 8",
+				k,
+			),
+			hogql(
+				`SELECT if(event = 'survey_responded', toString(properties.answer), toString(properties.$survey_response)) AS answer, count() AS c FROM events WHERE (event = 'survey_responded') OR (event = 'survey sent' AND properties.$survey_id = '${PH_SURVEY_ID}') GROUP BY answer ORDER BY c DESC`,
+				k,
+			),
+		]);
 		const n = (rows: unknown[]) =>
 			Number((rows[0] as unknown[] | undefined)?.[0] ?? 0);
 		const body: StatsBody = {
@@ -81,6 +114,8 @@ async function fetchStats(env: Env): Promise<StatsBody> {
 			live: n(live),
 			weekUnique: n(weekUnique),
 			weekEvents: n(weekEvents),
+			totalToday: n(totalToday),
+			highIntent: n(highIntent),
 			referrers: (referrers as unknown[][]).map((r) => ({
 				host: String(r[0] ?? "direct"),
 				count: Number(r[1] ?? 0),
@@ -88,6 +123,16 @@ async function fetchStats(env: Env): Promise<StatsBody> {
 			locations: (locations as unknown[][]).map((r) => ({
 				city: String(r[0] ?? ""),
 				country: String(r[1] ?? ""),
+			})),
+			recentEvents: (recent as unknown[][]).map((r) => ({
+				e: String(r[0] ?? ""),
+				city: String(r[1] ?? ""),
+				country: String(r[2] ?? ""),
+				ts: String(r[3] ?? ""),
+			})),
+			surveyTally: (tally as unknown[][]).map((r) => ({
+				answer: String(r[0] ?? ""),
+				count: Number(r[1] ?? 0),
 			})),
 		};
 		statsCache = { ts: Date.now(), body };
@@ -105,9 +150,7 @@ export default {
 			if (url.pathname === "/posthog/api/stats") {
 				const body = await fetchStats(env);
 				return Response.json(body, {
-					headers: {
-						"cache-control": "public, max-age=30",
-					},
+					headers: { "cache-control": "public, max-age=30" },
 				});
 			}
 

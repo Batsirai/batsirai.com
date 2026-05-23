@@ -1264,8 +1264,11 @@ function TabbedMain() {
         {tab === 'live' && (
           <>
             <TabHeader title="Live PostHog Loop" sub="real-time · this very page" />
+            <YourSession />
+            <FunnelOfYou />
             <LiveLoop />
             <Survey />
+            <PostHogPowered />
           </>
         )}
       </div>
@@ -1886,80 +1889,214 @@ function Sparkline({ data, color }) {
   );
 }
 
-function LiveLoop() {
-  const [tick, setTick] = React.useState(0);
-  const [live, setLive] = React.useState(7);
-  const [events, setEvents] = React.useState([
-    { who: "Someone in Berlin", what: "expanded the Buffer milestone", when: "2s" },
-    { who: "Someone in San Francisco", what: "clicked exp_02 (VAT)", when: "14s" },
-    { who: "Someone in Cambridge, UK", what: "loaded the dashboard", when: "31s" },
-  ]);
-  const POOL = [
-    { who: "Someone in London", what: "clicked through to GitHub" },
-    { who: "Someone in Brighton", what: "answered the survey (Honestly weirder)" },
-    { who: "Someone in Cape Town", what: "expanded Already Loved" },
-    { who: "Someone in Lagos", what: "loaded the dashboard" },
-    { who: "Someone in NYC", what: "scrolled to 100%" },
-    { who: "Someone in Toronto", what: "hovered KPI · 330k users" },
-    { who: "Someone in Berlin", what: "clicked exp_03 (migration)" },
-    { who: "posthog.com referrer", what: "opened the page" },
-  ];
-  React.useEffect(() => { window.posthog?.capture('live_widget_loaded'); }, []);
+/* ─── Phase 3 — PostHog showcase widgets ─── */
+const PH_DASHBOARD_URL = 'https://us.posthog.com/project/436808/dashboard/1620520';
 
-  // Live numbers from the Worker /api/stats proxy. Falls back silently to the
-  // rolling mock above if the proxy is pending (no PH_PERSONAL_KEY) or errors.
-  const [stats, setStats] = React.useState(null);
+function usePhStats() {
+  const [s, setS] = React.useState(null);
   React.useEffect(() => {
-    let cancelled = false;
+    let dead = false;
     async function load() {
       try {
         const r = await fetch('/posthog/api/stats');
         if (!r.ok) return;
         const j = await r.json();
-        if (!cancelled && j && j.status === 'ok') setStats(j);
+        if (!dead && j && j.status === 'ok') setS(j);
       } catch {}
     }
     load();
     const id = setInterval(load, 30000);
-    return () => { cancelled = true; clearInterval(id); };
+    return () => { dead = true; clearInterval(id); };
   }, []);
-  const flagOf = (cc) => {
-    if (!cc || cc.length !== 2) return '🌐';
-    const A = 0x1F1E6;
-    return String.fromCodePoint(A + cc.charCodeAt(0) - 65) +
-           String.fromCodePoint(A + cc.charCodeAt(1) - 65);
-  };
-  const fmtK = (n) =>
-    n == null ? null : n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(n);
+  return s;
+}
+
+function flagOf(cc) {
+  if (!cc || cc.length !== 2) return '🌐';
+  const A = 0x1F1E6;
+  return String.fromCodePoint(A + cc.charCodeAt(0) - 65) +
+         String.fromCodePoint(A + cc.charCodeAt(1) - 65);
+}
+
+function fmtK(n) {
+  if (n == null) return null;
+  return n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(n);
+}
+
+function humanizeEvent(e) {
+  switch (e) {
+    case '$pageview':           return 'opened the dashboard';
+    case 'kpi_clicked':         return 'opened a KPI breakdown';
+    case 'milestone_expanded':  return 'expanded a timeline milestone';
+    case 'survey_responded':    return 'answered the in-page survey';
+    case 'survey_shown':        return 'reached the survey card';
+    case 'live_widget_loaded':  return 'opened the live tab';
+    case 'survey sent':         return 'submitted the popover survey';
+    case 'survey shown':        return 'saw the popover survey';
+    case '$feature_flag_called': return 'got a feature flag';
+    case '$rageclick':          return 'rage-clicked something';
+    default:                    return e.replace(/_/g, ' ');
+  }
+}
+
+function YourSession() {
+  const [ids, setIds] = React.useState(null);
   React.useEffect(() => {
-    const id = setInterval(() => {
-      setTick(t => t + 1);
-      setLive(l => Math.max(3, Math.min(14, l + Math.round((Math.random()-0.45)*2))));
-      if (Math.random() > 0.4) {
-        const next = POOL[Math.floor(Math.random()*POOL.length)];
-        setEvents(prev => [{ ...next, when: "now" }, ...prev.slice(0, 2)].map((e, i) =>
-          i === 0 ? e : { ...e, when: (parseInt(e.when) || 0) + 4 + "s" }
-        ));
-      }
-    }, 4200);
+    const read = () => {
+      const ph = window.posthog;
+      if (!ph || !ph.get_session_id) return;
+      try {
+        const sid = ph.get_session_id();
+        const did = ph.get_distinct_id();
+        if (sid) setIds({ sid, did });
+      } catch {}
+    };
+    read();
+    const id = setInterval(read, 1500);
+    return () => clearInterval(id);
+  }, []);
+  if (!ids) return null;
+  const replayUrl = `https://us.posthog.com/project/436808/replay/${ids.sid}`;
+  const short = (s) => s.length > 14 ? s.slice(0, 8) + '…' + s.slice(-4) : s;
+  return (
+    <div className="ph-card ph-session">
+      <div className="ph-card-head">
+        <span><span className="live-dot"></span> your session — being recorded</span>
+        <a className="ph-link" href={replayUrl} target="_blank" rel="noreferrer">
+          watch yourself in PostHog ↗
+        </a>
+      </div>
+      <div className="ph-session-grid">
+        <div><div className="ph-k">session_id</div><div className="ph-mono">{short(ids.sid)}</div></div>
+        <div><div className="ph-k">distinct_id</div><div className="ph-mono">{short(ids.did || '')}</div></div>
+        <div><div className="ph-k">replay</div><div className="ph-mono">canvas · network · console</div></div>
+      </div>
+    </div>
+  );
+}
+
+function FunnelOfYou() {
+  const STEPS = [
+    { id: 'loaded',    label: 'loaded the dashboard',     event: null },
+    { id: 'milestone', label: 'expanded a timeline milestone', event: 'milestone_expanded' },
+    { id: 'kpi',       label: 'opened a KPI breakdown',   event: 'kpi_clicked' },
+    { id: 'survey',    label: 'answered the survey',      event: 'survey_responded' },
+  ];
+  const [done, setDone] = React.useState({ loaded: true });
+  React.useEffect(() => {
+    const ph = window.posthog;
+    if (!ph || typeof ph.on !== 'function') return;
+    let off;
+    try {
+      off = ph.on('eventCaptured', (e) => {
+        const name = e && (e.event || e.name);
+        const hit = STEPS.find(s => s.event === name);
+        if (hit) setDone(d => ({ ...d, [hit.id]: true }));
+      });
+    } catch {}
+    return () => { try { off && off(); } catch {} };
+  }, []);
+  const n = STEPS.filter(s => done[s.id]).length;
+  return (
+    <div className="ph-card ph-funnel">
+      <div className="ph-card-head">
+        <span>funnel · you ({n}/{STEPS.length})</span>
+        <span className="ph-k">live, client-side · mirrored to a PostHog insight</span>
+      </div>
+      <ol className="ph-funnel-list">
+        {STEPS.map((s, i) => (
+          <li key={s.id} className={done[s.id] ? 'on' : ''}>
+            <span className="ph-tick">{done[s.id] ? '✓' : String(i+1).padStart(2,'0')}</span>
+            <span className="ph-step">{s.label}</span>
+            <span className="ph-evt">{s.event ? `event: ${s.event}` : 'mount'}</span>
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
+function PostHogPowered() {
+  const stats = usePhStats();
+  const items = [
+    { label: 'autocapture',           meta: stats?.totalToday != null ? `${stats.totalToday.toLocaleString()} events in the last 24h` : 'every click, form, pageview' },
+    { label: 'session replay',        meta: 'recording you right now · canvas + console' },
+    { label: 'heatmaps',              meta: 'auto, via autocapture' },
+    { label: 'surveys',               meta: '1 active · popover on /posthog · 8s delay' },
+    { label: 'feature flags',         meta: 'dashboard-theme · multivariate · 80/10/10' },
+    { label: 'hogql via worker',      meta: 'this widget runs SQL against your PostHog' },
+    { label: 'custom events',         meta: 'kpi_clicked · milestone_expanded · survey_responded · live_widget_loaded · survey_shown' },
+    { label: 'person profiles + geoip', meta: stats?.locations?.length ? `${stats.locations.length} recent cities, enriched` : 'city · country · referrer' },
+    { label: 'cohort signal',         meta: stats?.highIntent != null ? `${stats.highIntent} high-intent visitors (30d) · ≥1 deep interaction` : 'high-intent: ≥1 deep interaction' },
+    { label: 'saved dashboard',       meta: '3 tiles · pageviews · custom events · by country' },
+  ];
+  return (
+    <div className="ph-card ph-powered">
+      <div className="ph-card-head">
+        <span>instrumented with PostHog</span>
+        <a className="ph-link" href={PH_DASHBOARD_URL} target="_blank" rel="noreferrer">
+          live PostHog dashboard ↗
+        </a>
+      </div>
+      <ul className="ph-powered-list">
+        {items.map((it, i) => (
+          <li key={i}>
+            <span className="ph-pow-tick">✓</span>
+            <span className="ph-pow-label">{it.label}</span>
+            <span className="ph-pow-meta">{it.meta}</span>
+          </li>
+        ))}
+      </ul>
+      <div className="ph-toolbar-hint">
+        Reviewing this on PostHog? Add <code>batsirai.com/posthog</code> as an authorized URL in your{' '}
+        <a href="https://us.posthog.com/settings/project-product-analytics" target="_blank" rel="noreferrer">project settings</a>{' '}
+        and launch the toolbar to inspect any element here.
+      </div>
+    </div>
+  );
+}
+
+function LiveLoop() {
+  const stats = usePhStats();
+  const [tick, setTick] = React.useState(0);
+  React.useEffect(() => { window.posthog?.capture('live_widget_loaded'); }, []);
+  // Cosmetic tick so timestamps re-render every few seconds.
+  React.useEffect(() => {
+    const id = setInterval(() => setTick(t => t + 1), 4000);
     return () => clearInterval(id);
   }, []);
 
   const sparkData = [12, 18, 14, 22, 30, 26, 33, 41, 38, 47, 52, 49, 58, 64];
 
+  // Real recent events from PostHog → ticker rows. Falls back to a small mock
+  // set when stats are pending so the layout never reads empty.
+  const realEvents = (stats?.recentEvents || []).slice(0, 3).map((r) => {
+    const ts = new Date(r.ts).getTime();
+    const ago = Math.max(1, Math.round((Date.now() - ts) / 1000));
+    const when = ago < 60 ? `${ago}s` : ago < 3600 ? `${Math.round(ago/60)}m` : `${Math.round(ago/3600)}h`;
+    const where = r.city ? `Someone in ${r.city}` : 'Someone';
+    return { who: where, what: humanizeEvent(r.e), when };
+  });
+  const fallbackEvents = [
+    { who: 'Someone in Berlin', what: 'expanded the Buffer milestone', when: '2s' },
+    { who: 'Someone in San Francisco', what: 'opened a KPI breakdown', when: '14s' },
+    { who: 'Someone in Cambridge, UK', what: 'loaded the dashboard', when: '31s' },
+  ];
+  const tickerEvents = realEvents.length ? realEvents : fallbackEvents;
+
   return (
     <div className="live-grid">
       <div>
         <div className="lv-head"><span className="live-dot"></span> live · last 5 min</div>
-        <div className="lv-num signal">{stats?.live ?? live}</div>
+        <div className="lv-num signal">{stats?.live ?? '—'}</div>
         <div className="lv-sub">visitors active right now</div>
         <div className="lv-spark">
           <Sparkline data={sparkData} color="#B8442D" />
         </div>
-        <div className="lv-sub">this week · {stats?.weekUnique ?? 432} unique · {fmtK(stats?.weekEvents) ?? '1.2k'} events</div>
+        <div className="lv-sub">this week · {stats?.weekUnique ?? '—'} unique · {fmtK(stats?.weekEvents) ?? '—'} events</div>
         <div className="lv-events">
-          {events.map((e, i) => (
-            <div className="lv-event" key={e.who + e.what + i + tick + i}>
+          {tickerEvents.map((e, i) => (
+            <div className="lv-event" key={e.who + e.what + i + tick}>
               <span className="lv-when">{e.when}</span>
               <span><b>{e.who}</b> {e.what}</span>
             </div>
@@ -2024,13 +2161,25 @@ function LiveLoop() {
 }
 
 function Survey() {
+  const stats = usePhStats();
   const [picked, setPicked] = React.useState(null);
   React.useEffect(() => { window.posthog?.capture('survey_shown'); }, []);
-  const tally = { yes: 31, no: 22, weirder: 47 };
+
+  // Real tally from PostHog (in-page survey_responded + native popover responses).
+  // Fall back to representative numbers until first responses land.
+  const fallback = [
+    { answer: 'Yes', count: 31 },
+    { answer: 'No', count: 22 },
+    { answer: 'Honestly weirder', count: 47 },
+  ];
+  const raw = stats?.surveyTally?.filter((r) => r.answer && r.answer !== 'null') ?? [];
+  const tallyRows = raw.length ? raw : fallback;
+  const total = tallyRows.reduce((s, r) => s + r.count, 0) || 1;
+
   return (
     <div className="survey">
       <div className="survey-q">
-        <small>survey · live</small>
+        <small>survey · live{stats?.surveyTally?.length ? '' : ' · representative numbers until first responses land'}</small>
         Was this more useful than a resume?
       </div>
       <div className="survey-opts">
@@ -2047,9 +2196,14 @@ function Survey() {
         <div className="survey-tally">
           <span>logged · thanks</span>
           <span>aggregate so far →</span>
-          <span style={{display:'flex',alignItems:'center',gap:6}}>yes <span className="bar"><i style={{width: tally.yes+'%'}}></i></span> {tally.yes}%</span>
-          <span style={{display:'flex',alignItems:'center',gap:6}}>no <span className="bar"><i style={{width: tally.no+'%'}}></i></span> {tally.no}%</span>
-          <span style={{display:'flex',alignItems:'center',gap:6}}>weirder <span className="bar"><i style={{width: tally.weirder+'%'}}></i></span> {tally.weirder}%</span>
+          {tallyRows.map((row) => {
+            const pct = Math.round((row.count / total) * 100);
+            return (
+              <span key={row.answer} style={{display:'flex',alignItems:'center',gap:6}}>
+                {row.answer.toLowerCase()} <span className="bar"><i style={{width: pct + '%'}}></i></span> {pct}%
+              </span>
+            );
+          })}
         </div>
       )}
     </div>
@@ -2342,6 +2496,23 @@ function App() {
     // theme attribute on body for any conditional CSS
     document.body.dataset.theme = t.palette;
   }, [t.palette, t.monoEverywhere]);
+
+  // PostHog feature flag `dashboard-theme` overrides the starting palette
+  // (multivariate: posthog 80% / apple 10% / terminal 10%). Applied once on
+  // first available value; user-triggered theme switches afterward win.
+  const flagApplied = React.useRef(false);
+  React.useEffect(() => {
+    function apply(v) {
+      if (!v || flagApplied.current) return;
+      if (!['posthog','apple','terminal'].includes(v)) return;
+      flagApplied.current = true;
+      setTweak('palette', v);
+    }
+    if (typeof window !== 'undefined' && window.__ph_theme) apply(window.__ph_theme);
+    const h = (e) => apply(e.detail);
+    window.addEventListener('ph-theme', h);
+    return () => window.removeEventListener('ph-theme', h);
+  }, []);
 
   // keyboard
   React.useEffect(() => {
