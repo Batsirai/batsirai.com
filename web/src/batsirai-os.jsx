@@ -1449,7 +1449,7 @@ function KPIs() {
         {KPI_DATA.map((k, i) => (
           <div className={`kpi k-${i+1}`}
                key={k.id}
-               onClick={() => setOpen(k.id)}
+               onClick={() => { setOpen(k.id); window.posthog?.capture('kpi_clicked', { id: k.id, label: k.label }); }}
                role="button"
                tabIndex={0}>
             <div className="k-spark">{k.spark} <span className="acc">●</span></div>
@@ -1640,7 +1640,7 @@ function Timeline() {
           <div key={i}
                ref={(el) => { rowRefs.current[i] = el; }}
                className={`tl-row ${open[i] ? 'open' : ''} ${matches(m) ? '' : 'hidden'}`}
-               onClick={() => setOpen(o => ({ ...o, [i]: !o[i] }))}>
+               onClick={() => { setOpen(o => ({ ...o, [i]: !o[i] })); window.posthog?.capture('milestone_expanded', { milestone: m.title, year: m.yStart }); }}>
             <div className="tl-year-col">
               <b>{m.yStart}</b>
               <span>{m.year}</span>
@@ -1904,6 +1904,7 @@ function LiveLoop() {
     { who: "Someone in Berlin", what: "clicked exp_03 (migration)" },
     { who: "posthog.com referrer", what: "opened the page" },
   ];
+  React.useEffect(() => { window.posthog?.capture('live_widget_loaded'); }, []);
   React.useEffect(() => {
     const id = setInterval(() => {
       setTick(t => t + 1);
@@ -1977,6 +1978,7 @@ function LiveLoop() {
 
 function Survey() {
   const [picked, setPicked] = React.useState(null);
+  React.useEffect(() => { window.posthog?.capture('survey_shown'); }, []);
   const tally = { yes: 31, no: 22, weirder: 47 };
   return (
     <div className="survey">
@@ -1989,7 +1991,7 @@ function Survey() {
           <button
             key={o}
             className={picked === o ? 'picked' : ''}
-            onClick={() => setPicked(o)}>
+            onClick={() => { setPicked(o); window.posthog?.capture('survey_responded', { answer: o }); }}>
             {o}
           </button>
         ))}
