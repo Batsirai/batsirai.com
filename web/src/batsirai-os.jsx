@@ -1,5 +1,6 @@
 import React from "react";
 import { createPortal } from "react-dom";
+import { DesktopAssetIcon, OsIcon } from "./os-icons.jsx";
 
 
 // tweaks-panel.jsx
@@ -531,6 +532,25 @@ function TweakButton({ label, onClick, secondary = false }) {
 const AppCtx = React.createContext(null);
 const useApp = () => React.useContext(AppCtx);
 
+function useMediaQuery(query) {
+  const [matches, setMatches] = React.useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.matchMedia(query).matches;
+  });
+  React.useEffect(() => {
+    const mq = window.matchMedia(query);
+    const update = () => setMatches(mq.matches);
+    update();
+    mq.addEventListener('change', update);
+    return () => mq.removeEventListener('change', update);
+  }, [query]);
+  return matches;
+}
+
+function useHoverCapable() {
+  return useMediaQuery('(hover: hover) and (pointer: fine)');
+}
+
 /* ─── Reusable drag hook for modals + floating windows ─── */
 function useDrag() {
   const [pos, setPos] = React.useState({ x: 0, y: 0 });
@@ -601,13 +621,22 @@ function MenuLabel({ children }) { return <div className="mi-sub">{children}</di
 function MenuBar({ now }) {
   const app = useApp();
   const [open, setOpen] = useMenu();
+  const musicCompact = useMediaQuery('(max-width: 640px)');
+
+  const toggleMusic = () => {
+    if (musicCompact) {
+      app.setTab('music');
+      return;
+    }
+    app.setShowMiniPlayer(!app.showMiniPlayer);
+  };
 
   const tagFilters = ['ALL','BUILT','FOUNDED','LED','EXITED'];
 
   return (
     <div className="menubar">
       <div className="mb-logo">
-        <span className="glyph"></span>
+        <span className="glyph"><OsIcon name="logo" size="menubar" /></span>
         <span>batsirai.os</span>
       </div>
 
@@ -624,7 +653,7 @@ function MenuBar({ now }) {
             <MenuSep />
             <MenuLabel>Recent applications</MenuLabel>
             <MenuItem label="✓ PostHog · Technical Ex-Founder" disabled />
-            <MenuItem label="(no others — single-target)" disabled />
+            <MenuItem label="(no others; single-target)" disabled />
             <MenuSep />
             <MenuItem label="Quit" onClick={() => app.openPalette('exit')} kbd="⌘Q" />
           </div>
@@ -719,9 +748,9 @@ function MenuBar({ now }) {
 
       <div className="mb-spacer"></div>
       <div className="mb-right">
-        <button className={`mb-music-toggle ${app.showMiniPlayer ? 'on' : ''}`}
-                onClick={() => app.setShowMiniPlayer(!app.showMiniPlayer)}
-                title={app.showMiniPlayer ? 'Hide mini player (⌘M)' : 'Show mini player (⌘M)'}>
+        <button className={`mb-music-toggle ${app.showMiniPlayer && !musicCompact ? 'on' : ''}`}
+                onClick={toggleMusic}
+                title={musicCompact ? 'Open Music tab' : (app.showMiniPlayer ? 'Hide mini player (⌘M)' : 'Show mini player (⌘M)')}>
           {app.showMiniPlayer ? (
             <span className="mb-eq"><i></i><i></i><i></i><i></i></span>
           ) : (
@@ -954,8 +983,10 @@ function Terminal({ scriptId, onClose, onRun }) {
 
 const CMDK_DISCOVERED_KEY = 'batsirai-cmdk-discovered';
 const CMDK_EXIT_INTENT_KEY = 'batsirai-cmdk-exit-intent';
+const FIRST_EXP_COLLAPSED_KEY = 'batsirai-first-exp-collapsed';
 const CMDK_NUDGE_AFTER_MS = 60_000;
 const CMDK_NUDGE_MIN_READ_MS = 20_000;
+const BOOK_CHAT_URL = 'https://calendar.app.google/LLHzx2oSeHBKtppG7';
 
 function useCmdkDiscovered() {
   const [discovered, setDiscovered] = React.useState(() => {
@@ -999,6 +1030,51 @@ function useCmdkNudge(cmdkDiscovered) {
   return [nudge, noteTabVisit];
 }
 
+function MobileBookBar() {
+  const app = useApp();
+  const compact = useMediaQuery('(max-width: 640px)');
+  const visible = compact && !app?.paletteOpen;
+
+  React.useEffect(() => {
+    document.documentElement.classList.toggle('mobile-book-bar-on', visible);
+    return () => document.documentElement.classList.remove('mobile-book-bar-on');
+  }, [visible]);
+
+  if (!visible) return null;
+
+  return (
+    <a
+      href={BOOK_CHAT_URL}
+      target="_blank"
+      rel="noreferrer"
+      className="mobile-book-bar mobile-book-bar--visible"
+      aria-label="Book a chat"
+      onClick={() => capturePh('mobile_book_bar_click')}
+    >
+      <span className="mobile-book-bar-dot" aria-hidden="true" />
+      <span>Book a chat →</span>
+    </a>
+  );
+}
+
+function MobileCmdkFab() {
+  const app = useApp();
+  const compact = useMediaQuery('(max-width: 640px)');
+  if (!app || !compact || app.paletteOpen) return null;
+  const nudge = app.cmdkNudge && !app.cmdkDiscovered;
+  return (
+    <button
+      type="button"
+      className={`mobile-cmdk-fab${nudge ? ' mobile-cmdk-fab--nudge' : ''}`}
+      onClick={() => app.openPalette('mobile_fab')}
+      aria-label="Open extras menu"
+    >
+      <span className="mobile-cmdk-fab-icon" aria-hidden="true">🎁</span>
+      <span className="mobile-cmdk-fab-hint">extras</span>
+    </button>
+  );
+}
+
 function CmdkTrigger({ compact = false, className = '', nudge = false }) {
   const app = useApp();
   const highlight = nudge || app.cmdkNudge;
@@ -1033,11 +1109,26 @@ function MenuBarCmdk() {
 
 function CmdkPromo() {
   const app = useApp();
+  const compact = useMediaQuery('(max-width: 640px)');
   if (app.cmdkDiscovered) return null;
+  if (compact) {
+    return (
+      <div className="cmdk-promo cmdk-promo--mobile">
+        <p className="cmdk-promo-copy">
+          <strong>Explore first:</strong> swipe the tabs above, tap ventures, try{' '}
+          <button type="button" className="cmdk-promo-inline" onClick={() => app.setTab('live')}>
+            Live
+          </button>
+          . Tap <kbd>⌘</kbd> below for themes and scripts. Book a chat when it lands.
+        </p>
+      </div>
+    );
+  }
   return (
     <div className={`cmdk-promo ${app.cmdkNudge ? 'cmdk-promo--nudge' : ''}`}>
       <p className="cmdk-promo-copy">
-        <strong>Start here:</strong> press <kbd>⌘K</kbd> (or click below) to jump tabs, run scripts, and flip themes — like a real OS.
+        <strong>Explore the app:</strong> press <kbd>⌘K</kbd> to jump tabs, flip themes, and run
+        scripts. Wander through Building and Live before you decide if we should talk.
       </p>
       <CmdkTrigger nudge={app.cmdkNudge} />
     </div>
@@ -1125,8 +1216,8 @@ function DesktopIcons({ side, items, activeTab }) {
           return (
             <button className={`di ${active ? 'active' : ''}`} key={i} type="button"
                     onClick={(e) => { e.preventDefault(); it.onClick(); }}>
-              <div className={`di-glyph ${it.acc || ''}`}>
-                {it.glyph}
+              <div className="di-glyph">
+                <DesktopAssetIcon name={it.icon} />
                 {it.badge && <span className="badge">{it.badge}</span>}
               </div>
               <div className="di-label">
@@ -1144,8 +1235,8 @@ function DesktopIcons({ side, items, activeTab }) {
              onClick={(e) => {
                if (it.onClick) { e.preventDefault(); it.onClick(); }
              }}>
-            <div className={`di-glyph ${it.acc || ''}`}>
-              {it.glyph}
+            <div className="di-glyph">
+              <DesktopAssetIcon name={it.icon} />
               {it.badge && <span className="badge">{it.badge}</span>}
             </div>
             <div className="di-label">
@@ -1162,9 +1253,14 @@ function DesktopIcons({ side, items, activeTab }) {
 /* ─── Draggable window ─── */
 function DraggableWindow({ title, meta, children }) {
   const app = useApp();
+  const compactChrome = useMediaQuery('(max-width: 640px)');
   const [pos, setPos] = React.useState({ x: 0, y: 0 });
   const [dragging, setDragging] = React.useState(false);
   const start = React.useRef(null);
+
+  React.useEffect(() => {
+    if (compactChrome) setPos({ x: 0, y: 0 });
+  }, [compactChrome]);
 
   React.useEffect(() => {
     if (!dragging) return;
@@ -1193,7 +1289,7 @@ function DraggableWindow({ title, meta, children }) {
     };
   }, [dragging]);
 
-  const onDown = (e) => {
+  const onDown = compactChrome ? undefined : (e) => {
     const p = e.touches ? e.touches[0] : e;
     start.current = { px: p.clientX, py: p.clientY, x: pos.x, y: pos.y };
     setDragging(true);
@@ -1202,13 +1298,13 @@ function DraggableWindow({ title, meta, children }) {
   return (
     <div
       className="window-wrap"
-      style={{ transform: `translate(${pos.x}px, ${pos.y}px)` }}>
-      <main className={`window ${dragging ? 'dragging' : ''}`} data-screen-label="01 dashboard">
+      style={{ transform: compactChrome ? undefined : `translate(${pos.x}px, ${pos.y}px)` }}>
+      <main className={`window ${dragging ? 'dragging' : ''} ${compactChrome ? 'window--compact' : ''}`} data-screen-label="01 dashboard">
         <div
-          className={`titlebar ${dragging ? 'dragging' : ''}`}
+          className={`titlebar ${dragging ? 'dragging' : ''} ${compactChrome ? 'titlebar--compact' : ''}`}
           onMouseDown={onDown}
           onTouchStart={onDown}
-          onDoubleClick={() => setPos({ x: 0, y: 0 })}>
+          onDoubleClick={compactChrome ? undefined : () => setPos({ x: 0, y: 0 })}>
           <div className="lights" onMouseDown={(e) => e.stopPropagation()}>
             <span className="l1" title="close (opens ⌘K)"
                   onClick={(e) => { e.stopPropagation(); app?.openPalette?.('exit'); }}></span>
@@ -1230,17 +1326,70 @@ function WindowHead() {
 
 /* ─── Profile sidebar (left of window body) ─── */
 const ACHIEVEMENTS = [
-  { sticker: '✮', label: 'founder × 5', tip: 'Founded or co-founded five companies.' },
-  { sticker: '$', label: '2 exits', tip: 'Two quiet exits: SongSuggest and Quickstaff.' },
-  { sticker: '⚑', label: 'led × 3', tip: 'Led product at three companies before PostHog.' },
-  { sticker: '↗', label: '+11%', tip: 'Grew active publishing at Buffer by 11% year-on-year.' },
-  { sticker: '◈', label: 'early ai', tip: 'Shipped an LLM product in 2023, before it was trendy.' },
-  { sticker: '◍', label: '330k', tip: 'Products I have built have reached 330k+ users.' },
-  { sticker: '¤', label: '$5M+', tip: 'Influenced $5M+ per year in revenue at Ensurall.' },
-  { sticker: '◎', label: '3k commits', tip: '3,000+ git commits shipped in 2026 alone.' },
+  { icon: 'founder', label: 'founder × 5', tip: 'Founded or co-founded five companies.' },
+  { icon: 'exits', label: '2 exits', tip: 'Two quiet exits: SongSuggest and Quickstaff.' },
+  { icon: 'led', label: 'led × 3', tip: 'Led product at three companies before PostHog.' },
+  { icon: 'growth', label: '+11%', tip: 'Grew active publishing at Buffer by 11% year-on-year.' },
+  { icon: 'ai', label: 'early ai', tip: 'Shipped an LLM product in 2023, before it was trendy.' },
+  { icon: 'users', label: '330k', tip: 'Products I have built have reached 330k+ users.' },
+  { icon: 'revenue', label: '$5M+', tip: 'Influenced $5M+ per year in revenue at Ensurall.' },
+  { icon: 'commits', label: '3k commits', tip: '3,000+ git commits shipped in 2026 alone.' },
 ];
 
+function ProfileBlock({ title, extra, children, foldOnMobile = false, defaultOpen = false, hideOnMobile = false }) {
+  const compact = useMediaQuery('(max-width: 640px)');
+  if (hideOnMobile && compact) return null;
+  if (!foldOnMobile || !compact) {
+    return (
+      <section className="ps-block">
+        <div className="ps-block-head">
+          {title}
+          {extra}
+        </div>
+        {children}
+      </section>
+    );
+  }
+  return (
+    <details className="ps-block ps-block--fold" defaultOpen={defaultOpen}>
+      <summary className="ps-block-head">
+        {title}
+        {extra}
+      </summary>
+      <div className="ps-block-body">{children}</div>
+    </details>
+  );
+}
+
+function ProfileDetails() {
+  return (
+    <dl className="ps-meta">
+      <dt>Reputation</dt><dd><span className="ps-rep">Builder · lvl 89</span></dd>
+      <dt>Started shipping</dt><dd>15 years ago</dd>
+      <dt>Pineapple on pizza</dt><dd><span className="ps-thumb">👍</span></dd>
+      <dt>Located</dt><dd>Toronto, CA 🇨🇦</dd>
+      <dt>Currently shipping</dt><dd>Already Loved</dd>
+      <dt>Day job</dt><dd>Product shipper · Ensurall</dd>
+      <dt>Looking at</dt><dd>PostHog · Tech Founder</dd>
+    </dl>
+  );
+}
+
+function ProfileLinks() {
+  return (
+    <div className="ps-links">
+      <a href="https://alreadylovedkids.com" target="_blank" rel="noreferrer" title="current product"><span className="ps-l-icon"><OsIcon name="external" size="link" /></span><span>alreadylovedkids.com</span></a>
+      <a href="https://github.com/Batsirai" target="_blank" rel="noreferrer" title="github"><span className="ps-l-icon"><OsIcon name="github" size="link" /></span><span>github</span></a>
+      <a href="https://x.com/batsirai" target="_blank" rel="noreferrer" title="x / twitter"><span className="ps-l-icon"><OsIcon name="x" size="link" /></span><span>x.com/batsirai</span></a>
+      <a href="https://www.linkedin.com/in/batsirai-chada/" target="_blank" rel="noreferrer" title="linkedin"><span className="ps-l-icon"><OsIcon name="linkedin" size="link" /></span><span>linkedin</span></a>
+      <a href="mailto:batsirai@gmail.com" title="email"><span className="ps-l-icon"><OsIcon name="email" size="link" /></span><span>email</span></a>
+      <a href="Batsirai-Chada-Resume.pdf" target="_blank" rel="noreferrer" title="resume.pdf"><span className="ps-l-icon"><OsIcon name="doc" size="link" /></span><span>resume.pdf</span></a>
+    </div>
+  );
+}
+
 function ProfileSidebar() {
+  const hoverCapable = useHoverCapable();
   return (
     <aside className="profile-side">
       <div className="ps-photo">
@@ -1249,51 +1398,38 @@ function ProfileSidebar() {
           shape="rect"
           src="/posthog/portrait.webp"
           placeholder="drop a photo of you"
-          style={{ width: '100%', height: 280, display: 'block' }}>
+          style={{ width: '100%', display: 'block' }}>
         </image-slot>
       </div>
       <div className="ps-name">
         <h2>BATSIRAI CHADA <span className="flag" title="Canada · Zimbabwe">🇨🇦 🇿🇼</span></h2>
+        <p className="ps-pronounce">pronounced: <span>Bats-her-eye</span></p>
         <div className="ps-tagline">Build. Ship. Learn. Repeat.</div>
         <div className="ps-role">tech founder · builder pm · ai producer</div>
+        <ProfileApplicationHint />
         <a className="ps-cta"
-           href="https://calendar.app.google/LLHzx2oSeHBKtppG7"
-           target="_blank" rel="noreferrer">
+           href={BOOK_CHAT_URL}
+           target="_blank" rel="noreferrer"
+           title="Book a 30-minute chat: PostHog Technical Ex-Founder interview">
           <span className="ps-cta-dot"></span>
           <span>Book a chat →</span>
-          <small>if you're from PostHog, it's me</small>
         </a>
       </div>
 
-      <section className="ps-block">
-        <div className="ps-block-head">Details</div>
-        <dl className="ps-meta">
-          <dt>Reputation</dt><dd><span className="ps-rep">Builder · lvl 89</span></dd>
-          <dt>Started shipping</dt><dd>15 years ago</dd>
-          <dt>Pineapple on pizza</dt><dd><span className="ps-thumb">👍</span></dd>
-          <dt>Located</dt><dd>Toronto, CA 🇨🇦</dd>
-          <dt>Currently shipping</dt><dd>Already Loved</dd>
-          <dt>Day job</dt><dd>Product shipper · Ensurall</dd>
-          <dt>Looking at</dt><dd>PostHog · Tech Founder</dd>
-        </dl>
-      </section>
+      <ProfileBlock title="Details" foldOnMobile defaultOpen>
+        <ProfileDetails />
+      </ProfileBlock>
 
-      <section className="ps-block">
-        <div className="ps-block-head">Links</div>
-        <div className="ps-links">
-          <a href="https://calendar.app.google/LLHzx2oSeHBKtppG7" target="_blank" title="book a 30-min chat"><span className="ps-l-icon">◎</span><span>book a chat</span></a>
-          <a href="https://alreadylovedkids.com" target="_blank" title="current product"><span className="ps-l-icon">↗</span><span>alreadylovedkids.com</span></a>
-          <a href="https://github.com/Batsirai" target="_blank" title="github"><span className="ps-l-icon">{`{ }`}</span><span>github</span></a>
-          <a href="https://x.com/batsirai" target="_blank" title="x / twitter"><span className="ps-l-icon">𝕏</span><span>x.com/batsirai</span></a>
-          <a href="https://www.linkedin.com/in/batsirai-chada/" target="_blank" title="linkedin"><span className="ps-l-icon">in</span><span>linkedin</span></a>
-          <a href="mailto:batsirai@gmail.com" title="email"><span className="ps-l-icon">✉</span><span>email</span></a>
-          <a href="Batsirai-Chada-Resume.pdf" target="_blank" title="resume.pdf"><span className="ps-l-icon">$</span><span>resume.pdf</span></a>
-        </div>
-      </section>
+      <ProfileBlock title="Links" foldOnMobile hideOnMobile>
+        <ProfileLinks />
+      </ProfileBlock>
 
-      <section className="ps-block">
-        <div className="ps-block-head">Achievements <span className="ps-arrow">↗</span></div>
-        <p className="ps-achievements-hint">Career highlights — hover any badge for detail.</p>
+      <ProfileBlock title="Achievements" extra={<span className="ps-arrow">↗</span>} foldOnMobile hideOnMobile>
+        <p className="ps-achievements-hint">
+          {hoverCapable
+            ? 'Career highlights — hover any badge for detail.'
+            : 'Career highlights — tap any badge for detail.'}
+        </p>
         <div className="ps-achievements">
           {ACHIEVEMENTS.map((a) => (
             <div
@@ -1303,17 +1439,12 @@ function ProfileSidebar() {
               tabIndex={0}
               aria-label={`${a.label}: ${a.tip}`}
             >
-              <div className="ach-sticker">{a.sticker}</div>
+              <div className="ach-sticker"><OsIcon name={a.icon} size="ach" /></div>
               <span className="ach-label">{a.label}</span>
             </div>
           ))}
         </div>
-      </section>
-
-      <section className="ps-block ps-status">
-        <span className="live-dot"></span>
-        <span>session being recorded</span>
-      </section>
+      </ProfileBlock>
     </aside>
   );
 }
@@ -1321,7 +1452,10 @@ function ProfileSidebar() {
 /* ─── Tabbed main content (right of profile sidebar) ─── */
 function TabbedMain() {
   const app = useApp();
-  const TABS = [
+  const mobileTabs = useMediaQuery('(max-width: 640px)');
+  const tabsRef = React.useRef(null);
+  const tabRefs = React.useRef({});
+  const BASE_TABS = [
     { id: 'readme',  label: 'Bio' },
     { id: 'timeline',label: 'Timeline' },
     { id: 'exp',     label: 'Experiments' },
@@ -1330,15 +1464,44 @@ function TabbedMain() {
     { id: 'music',   label: 'Music' },
     { id: 'live',    label: 'Live' },
   ];
+  const TABS = mobileTabs
+    ? [...BASE_TABS, { id: 'links', label: 'Links' }]
+    : BASE_TABS;
   const tab = app?.tab || 'readme';
   const setTab = app?.setTab || (() => {});
 
+  const scrollActiveTabIntoView = React.useCallback((tabId) => {
+    if (!mobileTabs) return;
+    const container = tabsRef.current;
+    const el = tabRefs.current[tabId];
+    if (!container || !el) return;
+    const left = el.offsetLeft - (container.clientWidth - el.offsetWidth) / 2;
+    container.scrollTo({ left: Math.max(0, left), behavior: 'smooth' });
+  }, [mobileTabs]);
+
+  React.useEffect(() => {
+    if (!mobileTabs && tab === 'links') setTab('readme');
+  }, [mobileTabs, tab, setTab]);
+
+  React.useEffect(() => {
+    if (!mobileTabs) return;
+    const id = requestAnimationFrame(() => scrollActiveTabIntoView(tab));
+    return () => cancelAnimationFrame(id);
+  }, [tab, mobileTabs, scrollActiveTabIntoView]);
+
   return (
     <section className="main-side">
-      <div className="tabs">
+      <div className="tabs" ref={tabsRef} role="tablist" aria-label="Sections">
         {TABS.map(t => (
           <button key={t.id}
+            ref={(node) => {
+              if (node) tabRefs.current[t.id] = node;
+              else delete tabRefs.current[t.id];
+            }}
             className={`tab ${tab === t.id ? 'on' : ''}`}
+            type="button"
+            role="tab"
+            aria-selected={tab === t.id}
             onClick={() => setTab(t.id)}>
             {t.label}
             {tab === t.id && <span className="tab-mark"></span>}
@@ -1348,48 +1511,88 @@ function TabbedMain() {
         <span className="tabs-meta">↻ auto-refresh</span>
       </div>
 
-      <div className="tab-body">
+      <div className="tab-body" key={tab}>
         {tab === 'readme' && <TabReadme />}
         {tab === 'timeline' && (
           <>
-            <TabHeader title="Builder Timeline" sub="15 years · 10 entries · 4 founded + 1 co-founded + 3 led · click to expand" />
+            <TabHeader
+              title="Builder Timeline"
+              sub="15 years · 10 entries · 4 founded + 1 co-founded + 3 led · click to expand"
+              subMobile="10 entries · tap to expand"
+            />
             <Timeline />
           </>
         )}
         {tab === 'exp' && (
           <>
-            <TabHeader title="Experiment Scoreboard" sub="hypothesis → outcome → learning" />
+            <TabHeader
+              title="Experiment Scoreboard"
+              sub="hypothesis → outcome → learning"
+              subMobile="7 experiments · stacked"
+            />
             <Experiments />
           </>
         )}
         {tab === 'values' && (
           <>
-            <TabHeader title="Values in Practice" sub="five posthog values · one story each" />
+            <TabHeader
+              title="Values in Practice"
+              sub="five posthog values · one story each"
+              subMobile="five values · tap to read"
+            />
             <Values />
           </>
         )}
         {tab === 'building' && (
           <>
-            <TabHeader title="Currently Building" sub="active products · live commits" />
-            <ActiveBuilds />
-            <Commits />
+            <TabHeader
+              title="Currently Building"
+              sub="active products · live commits"
+              subMobile="active builds · recent commits"
+            />
+            <div className="building-tab">
+              <ActiveBuilds />
+              <Commits />
+            </div>
           </>
         )}
         {tab === 'music' && (
           <>
-            <TabHeader title="My Music" sub="things I wrote and / or recorded" />
+            <TabHeader
+              title="My Music"
+              sub="things I wrote and / or recorded"
+              subMobile="written & recorded"
+            />
             <Music />
           </>
         )}
         {tab === 'live' && (
           <>
-            <TabHeader title="Live PostHog Loop" sub="real-time · this very page · clocks in ET + yours" />
+            <TabHeader
+              title="Live PostHog Loop"
+              sub="real-time · this very page · clocks in ET + yours"
+              subMobile="live · ET + your timezone"
+            />
+            <div className="live-tab">
             <LiveClockStrip />
             <YourSession />
             <FunnelOfYou />
             <LiveLoop />
             <Survey />
             <PostHogPowered />
+            </div>
+          </>
+        )}
+        {tab === 'links' && (
+          <>
+            <TabHeader
+              title="Links"
+              sub="portfolio · social · resume · email"
+              subMobile="tap to open"
+            />
+            <div className="links-tab">
+              <ProfileLinks />
+            </div>
           </>
         )}
       </div>
@@ -1397,11 +1600,18 @@ function TabbedMain() {
   );
 }
 
-function TabHeader({ title, sub }) {
+function TabHeader({ title, sub, subMobile }) {
   return (
     <div className="tab-head">
       <h2>{title}</h2>
-      <span className="tab-head-sub">{sub}</span>
+      {subMobile ? (
+        <>
+          <span className="tab-head-sub tab-head-sub--desktop">{sub}</span>
+          <span className="tab-head-sub tab-head-sub--mobile">{subMobile}</span>
+        </>
+      ) : (
+        <span className="tab-head-sub">{sub}</span>
+      )}
     </div>
   );
 }
@@ -1563,30 +1773,6 @@ function ventureMilestoneIndex(venture) {
   );
 }
 
-function layoutVenturePopover(anchor, el) {
-  if (!anchor || !el) return { top: 12, left: 12, place: 'right' };
-  const gap = 10;
-  const pad = 12;
-  const w = el.offsetWidth;
-  const h = el.offsetHeight;
-  let left = anchor.right + gap;
-  let top = anchor.top;
-  let place = 'right';
-
-  if (left + w > window.innerWidth - pad) {
-    left = anchor.left - w - gap;
-    place = 'left';
-  }
-  if (left < pad) {
-    left = Math.max(pad, anchor.left);
-    top = anchor.bottom + gap;
-    place = 'below';
-  }
-  top = Math.min(Math.max(pad, top), window.innerHeight - h - pad);
-  left = Math.min(Math.max(pad, left), window.innerWidth - w - pad);
-  return { top, left, place };
-}
-
 function useVenturePopoverState() {
   const [state, setState] = React.useState(null);
   const closeTimer = React.useRef(null);
@@ -1600,9 +1786,9 @@ function useVenturePopoverState() {
     setState(null);
   }, [clearCloseTimer]);
 
-  const open = React.useCallback((id, getAnchor) => {
+  const open = React.useCallback((id) => {
     clearCloseTimer();
-    setState({ id, getAnchor });
+    setState({ id });
     capturePh('venture_card_opened', { id, name: VENTURES[id].name });
   }, [clearCloseTimer]);
 
@@ -1630,7 +1816,7 @@ function useVenturePopoverState() {
 
 function isVentureUiNode(node) {
   if (!node || !(node instanceof Node)) return false;
-  return Boolean(node.closest?.('.ventm-pop, .cover-lb-back'));
+  return Boolean(node.closest?.('.ventm-pop, .ventm-back, .cover-lb-back'));
 }
 
 function VentureLink({ id, children, className = '' }) {
@@ -1638,8 +1824,7 @@ function VentureLink({ id, children, className = '' }) {
   const ref = React.useRef(null);
   if (!ctx || !VENTURES[id]) return children;
 
-  const getAnchor = () => ref.current?.getBoundingClientRect() ?? null;
-  const show = () => ctx.open(id, getAnchor);
+  const show = () => ctx.open(id);
   const isActive = ctx.activeId === id;
 
   return (
@@ -1648,9 +1833,7 @@ function VentureLink({ id, children, className = '' }) {
       type="button"
       className={`venture-link ${isActive ? 'venture-link-open' : ''} ${className}`.trim()}
       aria-expanded={isActive}
-      onMouseEnter={show}
-      onMouseLeave={ctx.scheduleClose}
-      onFocus={show}
+      aria-haspopup="dialog"
       onBlur={(e) => {
         if (isVentureUiNode(e.relatedTarget)) return;
         ctx.scheduleClose();
@@ -1662,6 +1845,29 @@ function VentureLink({ id, children, className = '' }) {
       }}
     >
       {children}
+    </button>
+  );
+}
+
+function VentureCoverThumb({ venture, onClick }) {
+  if (!venture?.coverImage) return null;
+  return (
+    <button
+      type="button"
+      className="ventm-cover-thumb"
+      onClick={onClick}
+      aria-label={`View sample ${venture.name} book cover`}
+    >
+      <img
+        src={venture.coverImage}
+        alt=""
+        width={104}
+        height={104}
+        loading="lazy"
+        decoding="async"
+        aria-hidden="true"
+      />
+      <span className="ventm-cover-thumb-label">view cover</span>
     </button>
   );
 }
@@ -1703,35 +1909,12 @@ function VentureCoverLightbox({ src, alt, onClose }) {
   );
 }
 
-function VenturePopover({ venture, getAnchor, onClose, onScheduleClose, onCancelClose }) {
+function VenturePopover({ venture, onClose, onCancelClose }) {
   const app = useApp();
   const popRef = React.useRef(null);
-  const [layout, setLayout] = React.useState({ top: 0, left: 0, place: 'right' });
   const [coverOpen, setCoverOpen] = React.useState(false);
   const milestoneIdx = ventureMilestoneIndex(venture);
   const coverAlt = venture.coverAlt || `${venture.name} sample book cover`;
-
-  const relayout = React.useCallback(() => {
-    const anchor = getAnchor?.();
-    const el = popRef.current;
-    if (!anchor || !el) return;
-    setLayout(layoutVenturePopover(anchor, el));
-  }, [getAnchor]);
-
-  React.useLayoutEffect(() => {
-    relayout();
-  }, [relayout, venture.id]);
-
-  React.useEffect(() => {
-    const onScroll = () => relayout();
-    const onResize = () => relayout();
-    window.addEventListener('scroll', onScroll, true);
-    window.addEventListener('resize', onResize);
-    return () => {
-      window.removeEventListener('scroll', onScroll, true);
-      window.removeEventListener('resize', onResize);
-    };
-  }, [relayout]);
 
   React.useEffect(() => {
     const onKey = (e) => {
@@ -1740,6 +1923,12 @@ function VenturePopover({ venture, getAnchor, onClose, onScheduleClose, onCancel
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, [onClose, coverOpen]);
+
+  React.useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, []);
 
   function goTimeline() {
     onClose();
@@ -1758,17 +1947,15 @@ function VenturePopover({ venture, getAnchor, onClose, onScheduleClose, onCancel
   }
 
   const popover = createPortal(
-    <div
-      ref={popRef}
-      className={`ventm-pop ventm-pop--${layout.place}${venture.coverImage ? ' ventm-pop--with-cover' : ''}`}
-      style={{ top: layout.top, left: layout.left }}
-      role="dialog"
-      aria-labelledby="ventm-title"
-      onMouseEnter={onCancelClose}
-      onMouseLeave={() => {
-        if (!coverOpen) onScheduleClose();
-      }}
-    >
+    <div className="ventm-back" onClick={onClose} role="presentation">
+      <div
+        ref={popRef}
+        className={`ventm-pop${venture.coverImage ? ' ventm-pop--with-cover' : ''}`}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="ventm-title"
+        onClick={(e) => e.stopPropagation()}
+      >
       <div className="kpim ventm">
         <div className="kpim-titlebar">
           <div className="lights">
@@ -1783,23 +1970,10 @@ function VenturePopover({ venture, getAnchor, onClose, onScheduleClose, onCancel
           <div className={venture.coverImage ? 'ventm-layout ventm-layout--cover' : 'ventm-layout'}>
             {venture.coverImage && (
               <div className="ventm-cover-col">
-                <button
-                  type="button"
-                  className="ventm-cover-thumb"
+                <VentureCoverThumb
+                  venture={venture}
                   onClick={openCover}
-                  aria-label={`View sample ${venture.name} book cover`}
-                >
-                  <img
-                    src={venture.coverImage}
-                    alt=""
-                    width={104}
-                    height={104}
-                    loading="lazy"
-                    decoding="async"
-                    aria-hidden="true"
-                  />
-                  <span className="ventm-cover-thumb-label">view cover</span>
-                </button>
+                />
               </div>
             )}
             <div className="ventm-copy-col">
@@ -1837,7 +2011,7 @@ function VenturePopover({ venture, getAnchor, onClose, onScheduleClose, onCancel
           </div>
         </div>
         <div className="kpim-foot ventm-foot">
-          <span>move away · <kbd>esc</kbd> to close</span>
+          <span>click outside · <kbd>esc</kbd> to close</span>
           <div className="ventm-foot-actions">
             {milestoneIdx >= 0 && (
               <button type="button" className="kpim-foot-btn" onClick={goTimeline}>
@@ -1876,6 +2050,7 @@ function VenturePopover({ venture, getAnchor, onClose, onScheduleClose, onCancel
           </div>
         </div>
       </div>
+      </div>
     </div>,
     document.body
   );
@@ -1902,8 +2077,9 @@ function TabReadme() {
     <VentureCtx.Provider value={ventureCtx}>
     <div className="readme">
       <div className="readme-eyebrow">
-        // application :: technical_ex_founder / ai_pm @ posthog
+        // application :: technical_ex_founder @ posthog
       </div>
+      <FirstExperienceStrip />
       <h1 className="readme-h1">
         Builder. Shipper. Singer.
         <span className="underscore"></span>
@@ -2004,9 +2180,7 @@ function TabReadme() {
     {venture && ventureState && (
       <VenturePopover
         venture={venture}
-        getAnchor={ventureState.getAnchor}
         onClose={ventureCtx.close}
-        onScheduleClose={ventureCtx.scheduleClose}
         onCancelClose={ventureCtx.cancelClose}
       />
     )}
@@ -2067,8 +2241,8 @@ function Section({ num, title, sub, children }) {
 /* ─── Hero KPIs ─── */
 const KPI_DATA = [
   { id: "k_01", num: "9", unit: "", label: "Products shipped",
-    meth: "4 founded · 1 co-founded · 1 agent-platform skills author · 3 led at other companies. Each launched, reached strangers, had a way to die.",
-    spark: "· verified",
+    meth: "4 founded · 1 co-founded · 1 agent-platform skills author · 3 led at other companies. Each launched, reached strangers, and taught me lots. A million ideas still in the chamber; I painfully say no (for now).",
+    spark: "· verified · for now",
     breakdown: [
       { name: "SongSuggest · founded",     v: "2010 · sold"        },
       { name: "VCG/Ensurall · architected", v: "2010– · ongoing"      },
@@ -2080,7 +2254,7 @@ const KPI_DATA = [
       { name: "Personal Agent · skills author", v: "2 personas · 39 skills · 260+ sales"},
       { name: "Already Loved · founded",   v: "2024– · going concern" },
     ],
-    note: "shipped = launched + reached real users + had a way to die.",
+    note: "nine on the board. shipped = launched + reached real users + taught me something worth keeping. the rest wait in the chamber until they earn a yes.",
   },
   { id: "k_02", num: "15", unit: "y", label: "Years building",
     meth: "Continuous from 2010 — SongSuggest at the dawn of the App Store to Already Loved today.",
@@ -2173,7 +2347,10 @@ function KPIModal({ kpi, onClose }) {
             <span className="l2" title="minimize"></span>
             <span className="l3" title="zoom"></span>
           </div>
-          <div className="kpim-title">{kpi.id} · {kpi.label.toLowerCase()} · breakdown</div>
+          <div className="kpim-title">
+            {kpi.id} · {kpi.label.toLowerCase()}
+            <span className="kpim-title-suffix"> · breakdown</span>
+          </div>
           <button className="kpim-close" onClick={onClose}>×</button>
         </div>
         <div className="kpim-body">
@@ -2214,6 +2391,7 @@ const MILESTONES = [
     type: "AI-personalised identity books for children",
     impact: "Book sales launched May 2026 · 3,000+ commits in 2026 · going concern",
     tag: "FOUNDED + SHIPPING", tagClass: "tag-founded", built: true,
+    ventureId: "already-loved",
     url: "https://alreadylovedkids.com",
     detail: "Founded with my wife. Not personalised stories — personalised identity formation, the vitamin every kid needs in the preschool years. The illustrated book is the spoonful of sugar that makes it go down. I fix the bugs, harden security, check the logs, write the image prompts. No co-founder, no engineering team — just me, AI, my wife, and my kids." },
   { year: "2024–present", yStart: 2024, title: "Personal Agent (OpenClaw / Hermes)",
@@ -2273,6 +2451,7 @@ const MILESTONES = [
 function Timeline() {
   const app = useApp();
   const [open, setOpen] = React.useState({ 0: true }); // Already Loved open by default
+  const [coverPreview, setCoverPreview] = React.useState(null);
   const rowRefs = React.useRef({});
 
   React.useEffect(() => {
@@ -2311,26 +2490,56 @@ function Timeline() {
 
   return (
     <div className="timeline">
+      {coverPreview && (
+        <VentureCoverLightbox
+          src={coverPreview.src}
+          alt={coverPreview.alt}
+          onClose={() => setCoverPreview(null)}
+        />
+      )}
       <div className="tl-filterbar">
         <span className="fb-label">filter</span>
-        {['ALL','BUILT','FOUNDED','LED','EXITED'].map((t) => (
-          <button key={t} className={`tl-chip ${tagFilter === t ? 'on' : ''}`}
-                  onClick={() => app.setTagFilter(t)}>
-            {t.toLowerCase()}
-          </button>
-        ))}
+        <div className="tl-filters">
+          {['ALL','BUILT','FOUNDED','LED','EXITED'].map((t) => (
+            <button key={t} className={`tl-chip tl-chip--${t.toLowerCase()} ${tagFilter === t ? 'on' : ''}`}
+                    onClick={() => app.setTagFilter(t)}>
+              {t.toLowerCase()}
+            </button>
+          ))}
+        </div>
         <span className="tl-count">showing {count} of {MILESTONES.length}</span>
         <div className="tl-actions">
-          <span onClick={() => { const n = {}; MILESTONES.forEach((_, i) => n[i] = true); setOpen(n); }}>[expand all]</span>
-          <span onClick={() => setOpen({})}>[collapse all]</span>
+          <button type="button" className="tl-action"
+                  onClick={() => { const n = {}; MILESTONES.forEach((_, i) => n[i] = true); setOpen(n); }}>
+            [expand all]
+          </button>
+          <button type="button" className="tl-action"
+                  onClick={() => setOpen({})}>
+            [collapse all]
+          </button>
         </div>
       </div>
       <div className="tl-events">
-        {MILESTONES.map((m, i) => (
+        {MILESTONES.map((m, i) => {
+          const venture = m.ventureId ? VENTURES[m.ventureId] : null;
+          const showCover = Boolean(venture?.coverImage);
+          return (
           <div key={i}
                ref={(el) => { rowRefs.current[i] = el; }}
                className={`tl-row ${open[i] ? 'open' : ''} ${matches(m) ? '' : 'hidden'}`}
+               role="button"
+               tabIndex={0}
+               aria-expanded={!!open[i]}
                onClick={() => {
+                 setOpen(o => {
+                   const next = !o[i];
+                   if (next) capturePh('milestone_expanded', { milestone: m.title, year: m.yStart });
+                   return { ...o, [i]: next };
+                 });
+               }}
+               onKeyDown={(e) => {
+                 if (e.key !== 'Enter' && e.key !== ' ') return;
+                 e.preventDefault();
                  setOpen(o => {
                    const next = !o[i];
                    if (next) capturePh('milestone_expanded', { milestone: m.title, year: m.yStart });
@@ -2357,11 +2566,26 @@ function Timeline() {
               </div>
               <div className="tl-type">{m.type}</div>
               <div className="tl-impact"><b>{m.impact}</b></div>
-              <div className="tl-detail">{m.detail}</div>
+              <div className={`tl-detail${showCover ? ' tl-detail--with-cover' : ''}`}>
+                {showCover && (
+                  <VentureCoverThumb
+                    venture={venture}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setCoverPreview({
+                        src: venture.coverImage,
+                        alt: venture.coverAlt || `${venture.name} sample book cover`,
+                      });
+                      capturePh('timeline_cover_open', { milestone: m.title, venture: venture.id });
+                    }}
+                  />
+                )}
+                <p className="tl-detail-text">{m.detail}</p>
+              </div>
             </div>
-            <div className="tl-expand">expand</div>
+            <div className="tl-expand"><span className="tl-expand-label">expand</span></div>
           </div>
-        ))}
+        );})}
       </div>
     </div>
   );
@@ -2401,32 +2625,34 @@ const EXPERIMENTS = [
 
 function Experiments() {
   return (
-    <table className="exp-table">
-      <thead>
-        <tr>
-          <th>Experiment</th>
-          <th>Hypothesis</th>
-          <th>Outcome</th>
-          <th>Learning</th>
-        </tr>
-      </thead>
-      <tbody>
-        {EXPERIMENTS.map((e) => (
-          <tr key={e.id}>
-            <td className="exp-name">
-              <span className="exp-id">{e.id}</span>
-              {e.name}
-            </td>
-            <td className="exp-hyp">{e.hyp}</td>
-            <td className="exp-out">
-              <span className="out-stat"><span className="result-dot"></span>{e.stat}</span>
-              <span className="out-note">{e.note}</span>
-            </td>
-            <td className="exp-learn">{e.learn}</td>
+    <div className="exp-wrap">
+      <table className="exp-table">
+        <thead>
+          <tr>
+            <th>Experiment</th>
+            <th>Hypothesis</th>
+            <th>Outcome</th>
+            <th>Learning</th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {EXPERIMENTS.map((e) => (
+            <tr key={e.id}>
+              <td className="exp-name">
+                <span className="exp-id">{e.id}</span>
+                {e.name}
+              </td>
+              <td className="exp-hyp" data-label="Hypothesis">{e.hyp}</td>
+              <td className="exp-out" data-label="Outcome">
+                <span className="out-stat"><span className="result-dot"></span>{e.stat}</span>
+                <span className="out-note">{e.note}</span>
+              </td>
+              <td className="exp-learn" data-label="Learning">{e.learn}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -2694,6 +2920,7 @@ function Sparkline({ data, color }) {
 
 /* ─── Phase 3 — PostHog showcase widgets ─── */
 const PH_DASHBOARD_URL = 'https://us.posthog.com/project/436808/dashboard/1620520';
+const PH_REPLAY_BASE = 'https://us.posthog.com/project/436808/replay/';
 
 /** Custom events advertised on the Live tab — keep in sync with capture() calls below. */
 const LIVE_CUSTOM_EVENTS = [
@@ -2702,6 +2929,14 @@ const LIVE_CUSTOM_EVENTS = [
   'survey_responded',
   'live_widget_loaded',
   'survey_shown',
+  'first_experience_strip_shown',
+  'first_experience_book_chat_click',
+  'first_experience_explore_primary',
+  'first_experience_explore_timeline',
+  'first_experience_explore_building',
+  'first_experience_explore_experiments',
+  'first_experience_explore_live',
+  'first_experience_explore_cmdk',
 ];
 
 const captureOnceKeys = new Set();
@@ -2764,18 +2999,15 @@ function humanizeEvent(e) {
   }
 }
 
-function YourSession() {
+function usePostHogIds() {
   const [ids, setIds] = React.useState(null);
-  const [geo, setGeo] = React.useState(null);
-  const [clock, setClock] = React.useState('');
-
   React.useEffect(() => {
     const read = () => {
       const ph = window.posthog;
-      if (!ph || !ph.get_session_id) return;
+      if (!ph?.get_session_id) return;
       try {
         const sid = ph.get_session_id();
-        const did = ph.get_distinct_id();
+        const did = ph.get_distinct_id?.() || null;
         if (sid) setIds({ sid, did });
       } catch {}
     };
@@ -2783,6 +3015,151 @@ function YourSession() {
     const id = setInterval(read, 1500);
     return () => clearInterval(id);
   }, []);
+  return ids;
+}
+
+function shortPhId(s) {
+  if (!s) return '';
+  return s.length > 14 ? s.slice(0, 8) + '…' + s.slice(-4) : s;
+}
+
+function useFromPostHog() {
+  return React.useMemo(() => {
+    try {
+      const ref = document.referrer || '';
+      const params = new URLSearchParams(window.location.search);
+      return /posthog\.com/i.test(ref)
+        || params.get('utm_source') === 'posthog'
+        || params.get('from') === 'posthog';
+    } catch {
+      return false;
+    }
+  }, []);
+}
+
+function FirstExperienceStrip() {
+  const app = useApp();
+  const fromPh = useFromPostHog();
+  const [collapsed, setCollapsed] = React.useState(() => {
+    try { return sessionStorage.getItem(FIRST_EXP_COLLAPSED_KEY) === '1'; } catch { return false; }
+  });
+
+  React.useEffect(() => {
+    capturePhOnce('first_experience_strip_shown', { from_posthog: fromPh });
+  }, [fromPh]);
+
+  const dismiss = () => {
+    setCollapsed(true);
+    try { sessionStorage.setItem(FIRST_EXP_COLLAPSED_KEY, '1'); } catch {}
+    capturePh('first_experience_strip_dismissed');
+  };
+  const expand = () => {
+    setCollapsed(false);
+    try { sessionStorage.removeItem(FIRST_EXP_COLLAPSED_KEY); } catch {}
+    capturePh('first_experience_strip_expanded');
+  };
+
+  if (collapsed) {
+    return (
+      <button type="button" className="first-exp first-exp--collapsed" onClick={expand}>
+        <span className="first-exp-kicker">for PostHog</span>
+        <span className="first-exp-collapsed-text">Explore the app · then let&apos;s talk</span>
+        <span className="first-exp-collapsed-cta">expand</span>
+      </button>
+    );
+  }
+
+  const head = fromPh ? 'If you\'re from PostHog' : 'Applying to PostHog';
+  const copy = fromPh ? (
+    <>
+      I made batsirai.os for you. Wander through it like an app, not a PDF: the tabs, the
+      ventures, the themes, the Live surface. If the experience feels like someone you want on
+      the team, I&apos;d love to talk about technical ex-founder, or whatever role you think
+      fits.
+    </>
+  ) : (
+    <>
+      This is my application to PostHog, built as something you can actually use. Explore the
+      tabs, poke the Easter eggs, see how it feels. If it resonates, I&apos;m hoping we can talk
+      about the technical ex-founder path, or anywhere else I might belong.
+    </>
+  );
+
+  const goExplore = (target, eventName, extra) => {
+    if (target === 'cmdk') app.openPalette('first_experience');
+    else app.setTab(target);
+    capturePh(eventName, extra);
+  };
+
+  return (
+    <div className="first-exp" role="region" aria-label="Note to PostHog reviewers">
+      <div className="first-exp-head">
+        <span className="first-exp-kicker">{head}</span>
+        <button type="button" className="first-exp-dismiss" onClick={dismiss} aria-label="Collapse">
+          ×
+        </button>
+      </div>
+      <p className="first-exp-copy">{copy}</p>
+      <div className="first-exp-explore-label">Start anywhere</div>
+      <div className="first-exp-explore">
+        <button type="button" className="first-exp-chip" onClick={() => goExplore('timeline', 'first_experience_explore_timeline')}>
+          Timeline
+        </button>
+        <button type="button" className="first-exp-chip" onClick={() => goExplore('building', 'first_experience_explore_building')}>
+          Building
+        </button>
+        <button type="button" className="first-exp-chip" onClick={() => goExplore('exp', 'first_experience_explore_experiments')}>
+          Experiments
+        </button>
+        <button type="button" className="first-exp-chip" onClick={() => goExplore('live', 'first_experience_explore_live')}>
+          Live
+        </button>
+        <button type="button" className="first-exp-chip first-exp-chip--cmdk" onClick={() => goExplore('cmdk', 'first_experience_explore_cmdk')}>
+          ⌘K extras
+        </button>
+      </div>
+      <div className="first-exp-actions">
+        <button
+          type="button"
+          className="first-exp-primary"
+          onClick={() => goExplore('building', 'first_experience_explore_primary')}
+        >
+          Explore the app →
+        </button>
+        <a
+          className="first-exp-secondary first-exp-secondary--link"
+          href={BOOK_CHAT_URL}
+          target="_blank"
+          rel="noreferrer"
+          onClick={() => capturePh('first_experience_book_chat_click')}
+        >
+          Book a chat when you&apos;re ready →
+        </a>
+      </div>
+    </div>
+  );
+}
+
+function ProfileApplicationHint() {
+  const app = useApp();
+  return (
+    <button
+      type="button"
+      className="ps-app-hint"
+      onClick={() => {
+        app.setTab('building');
+        capturePh('profile_application_hint_click');
+      }}
+    >
+      Built for PostHog · explore the tabs, then say hi →
+    </button>
+  );
+}
+
+function YourSession() {
+  const ids = usePostHogIds();
+  const [geo, setGeo] = React.useState(null);
+  const [clock, setClock] = React.useState('');
 
   React.useEffect(() => {
     let dead = false;
@@ -2812,8 +3189,8 @@ function YourSession() {
 
   if (!ids) return null;
 
-  const replayUrl = `https://us.posthog.com/project/436808/replay/${ids.sid}`;
-  const short = (s) => s.length > 14 ? s.slice(0, 8) + '…' + s.slice(-4) : s;
+  const replayUrl = `${PH_REPLAY_BASE}${ids.sid}`;
+  const short = shortPhId;
   const place = geo
     ? [geo.city, geo.region || geo.country].filter(Boolean).join(', ')
     : null;
@@ -3058,7 +3435,15 @@ function Survey() {
   return (
     <div className="survey">
       <div className="survey-q">
-        <small>survey · live{stats?.surveyTally?.length ? '' : ' · representative numbers until first responses land'}</small>
+        <small>
+          survey · live
+          {!stats?.surveyTally?.length && (
+            <>
+              <span className="survey-q-note survey-q-note--full"> · representative numbers until first responses land</span>
+              <span className="survey-q-note survey-q-note--short"> · sample data</span>
+            </>
+          )}
+        </small>
         Was this more useful than a resume?
       </div>
       <div className="survey-opts">
@@ -3073,16 +3458,22 @@ function Survey() {
       </div>
       {picked && (
         <div className="survey-tally">
-          <span>logged · thanks</span>
-          <span>aggregate so far →</span>
-          {tallyRows.map((row) => {
-            const pct = Math.round((row.count / total) * 100);
-            return (
-              <span key={row.answer} style={{display:'flex',alignItems:'center',gap:6}}>
-                {row.answer.toLowerCase()} <span className="bar"><i style={{width: pct + '%'}}></i></span> {pct}%
-              </span>
-            );
-          })}
+          <div className="survey-tally-meta">
+            <span>logged · thanks</span>
+            <span>aggregate so far →</span>
+          </div>
+          <div className="survey-tally-rows">
+            {tallyRows.map((row) => {
+              const pct = Math.round((row.count / total) * 100);
+              return (
+                <div className="survey-tally-row" key={row.answer}>
+                  <span className="survey-tally-label">{row.answer.toLowerCase()}</span>
+                  <span className="bar"><i style={{ width: pct + '%' }}></i></span>
+                  <span className="survey-tally-pct">{pct}%</span>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
     </div>
@@ -3280,15 +3671,14 @@ function Foot() {
   return (
     <footer className="foot">
       <div className="foot-why">
-        Built for the <b>PostHog Technical Ex‑Founder application</b>, in one day.
+        Built for the <b>PostHog Technical Ex-Founder application</b>, in one day.
         Source on GitHub. Instrumented with PostHog. Of course it is.
       </div>
       <div className="foot-replay">
         <span className="rec-dot"></span>
-        Every session on this page is recorded — including yours. Wave at the camera.
+        Every session on this page is recorded, including yours. Wave at the camera.
       </div>
       <div className="foot-links">
-        <a href="https://calendar.app.google/LLHzx2oSeHBKtppG7" target="_blank">book a chat</a>
         <a href="Batsirai-Chada-Resume.pdf" target="_blank">resume.pdf</a>
         <a href="https://github.com/Batsirai" target="_blank">github · @batsirai</a>
         <a href="https://www.linkedin.com/in/batsirai-chada/" target="_blank">linkedin · batsirai-chada</a>
@@ -3310,7 +3700,7 @@ const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
   "palette": "posthog",
   "density": "comfy",
   "showDesktop": true,
-  "showGrain": true,
+  "showGrain": false,
   "showWallpaper": true,
   "showMiniPlayer": true,
   "monoEverywhere": false
@@ -3371,6 +3761,7 @@ const PALETTES = {
 };
 
 function App() {
+  const compactChrome = useMediaQuery('(max-width: 640px)');
   const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
   const [now, setNow] = React.useState(formatNow());
   const [tab, setTab] = React.useState('readme');
@@ -3392,6 +3783,17 @@ function App() {
   React.useEffect(() => {
     const id = setInterval(() => setNow(formatNow()), 30000);
     return () => clearInterval(id);
+  }, []);
+
+  React.useEffect(() => {
+    capturePhOnce('console_delight_shown');
+    // eslint-disable-next-line no-console
+    console.log(
+      '%cbatsirai.os%c Hey PostHog — I built this for you.\nExplore the tabs, ventures, and ⌘K extras.\nIf it lands, book a chat: %s',
+      'font-weight:700;font-size:13px;color:#B8442D',
+      'font-size:12px;color:#7C7361',
+      BOOK_CHAT_URL,
+    );
   }, []);
 
   // palette → css vars
@@ -3428,6 +3830,19 @@ function App() {
     // theme attribute on body for any conditional CSS
     document.body.dataset.theme = t.palette;
   }, [t.palette, t.monoEverywhere]);
+
+  React.useEffect(() => {
+    if (paletteOpen) {
+      document.body.dataset.cmdkOpen = '1';
+      const prev = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => {
+        delete document.body.dataset.cmdkOpen;
+        document.body.style.overflow = prev;
+      };
+    }
+    delete document.body.dataset.cmdkOpen;
+  }, [paletteOpen]);
 
   const openPalette = React.useCallback((source = 'shortcut') => {
     markCmdkDiscovered();
@@ -3482,7 +3897,6 @@ function App() {
 
   const goTab = React.useCallback((id) => {
     setTab(id);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
   }, []);
 
   function shutdownApp() {
@@ -3506,6 +3920,7 @@ function App() {
     },
     runScript: (id) => setTerminalId(id),
     openPalette,
+    paletteOpen,
     cmdkDiscovered,
     cmdkNudge,
     resetWindow, snapshot, shutdownApp,
@@ -3543,27 +3958,27 @@ function App() {
   ];
 
   const leftIcons = [
-    { glyph: "▤", label: "bio", sub: "start here", tab: 'readme',
+    { icon: "bio", label: "bio", sub: "start here", tab: 'readme',
       onClick: () => goTab('readme') },
-    { glyph: "⧖", label: "timeline", sub: "15 yrs", acc: "acc-mustard", tab: 'timeline',
+    { icon: "timeline", label: "timeline", sub: "15 yrs", acc: "acc-mustard", tab: 'timeline',
       onClick: () => goTab('timeline') },
-    { glyph: "ƒ", label: "experiments", sub: "7 logged", acc: "acc-brick", tab: 'exp',
+    { icon: "experiments", label: "experiments", sub: "7 logged", acc: "acc-brick", tab: 'exp',
       onClick: () => goTab('exp') },
-    { glyph: "✮", label: "values", sub: "in practice", acc: "acc-plum", tab: 'values',
+    { icon: "values", label: "values", sub: "in practice", acc: "acc-plum", tab: 'values',
       onClick: () => goTab('values') },
-    { glyph: "{}", label: "building", sub: "live commits", acc: "acc-ink", tab: 'building',
+    { icon: "building", label: "building", sub: "live commits", acc: "acc-ink", tab: 'building',
       onClick: () => goTab('building') },
-    { glyph: "♪", label: "music", sub: "preview listen", tab: 'music',
+    { icon: "music", label: "music", sub: "preview listen", tab: 'music',
       onClick: () => goTab('music') },
-    { glyph: "◐", label: "live loop", sub: "this page", acc: "acc-forest", badge: "LIVE", tab: 'live',
+    { icon: "live", label: "live loop", sub: "this page", acc: "acc-forest", badge: "LIVE", tab: 'live',
       onClick: () => goTab('live') },
   ];
   const rightIcons = [
-    { glyph: "$", label: "resume", sub: ".pdf", acc: "acc-brick", badge: "PDF", href: "Batsirai-Chada-Resume.pdf" },
-    { glyph: "✉", label: "email", sub: "say hi", acc: "acc-plum", href: "mailto:batsirai@gmail.com" },
-    { glyph: "in", label: "linkedin", sub: "batsirai-chada", href: "https://linkedin.com" },
-    { glyph: "↗", label: "github", sub: "@batsirai", acc: "acc-ink", href: "https://github.com" },
-    { glyph: "⌘K", label: "command", sub: "palette", acc: "acc-mustard",
+    { icon: "resume", label: "resume", sub: ".pdf", acc: "acc-brick", href: "Batsirai-Chada-Resume.pdf" },
+    { icon: "email", label: "email", sub: "say hi", acc: "acc-plum", href: "mailto:batsirai@gmail.com" },
+    { icon: "linkedin", label: "linkedin", sub: "batsirai-chada", href: "https://linkedin.com" },
+    { icon: "github", label: "github", sub: "@batsirai", acc: "acc-ink", href: "https://github.com" },
+    { icon: "command", label: "command", sub: "palette", acc: "acc-mustard",
       badge: cmdkDiscovered ? null : (cmdkNudge ? "→" : "TRY"),
       onClick: () => openPalette('desktop') },
   ];
@@ -3589,8 +4004,13 @@ function App() {
         </div>
 
         <DraggableWindow
-          title="career.dashboard — batsirai.chada"
-          meta={<><span>auto-refresh: on</span><CmdkTrigger compact nudge={cmdkNudge && !cmdkDiscovered} /></>}>
+          title={compactChrome ? 'batsirai.os' : 'career.dashboard — batsirai.chada'}
+          meta={compactChrome ? null : (
+            <>
+              <span className="titlebar-refresh">auto-refresh: on</span>
+              <CmdkTrigger compact nudge={cmdkNudge && !cmdkDiscovered} />
+            </>
+          )}>
           <div className="window-body">
             <ProfileSidebar />
             <TabbedMain />
@@ -3619,6 +4039,8 @@ function App() {
           </div>
         </div>
       )}
+      <MobileBookBar />
+      <MobileCmdkFab />
 
       <TweaksPanel title="Tweaks">
         <TweakSection label="Palette">
