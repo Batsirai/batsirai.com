@@ -1407,7 +1407,7 @@ const KPI_DATA = [
       { name: "First production ship",  v: "2010 · SongSuggest" },
       { name: "First founder exit",     v: "2022 · Quickstaff"  },
       { name: "First LLM product",      v: "2023 · Cowriter"    },
-      { name: "First AI agent product", v: "2024 · Personal Agent"    },
+      { name: "First AI agent product", v: "2025 · Personal Agent"    },
       { name: "Current focus",          v: "Already Loved"      },
       { name: "Day job (since 2010)",   v: "Ensurall · AI Producer" },
     ],
