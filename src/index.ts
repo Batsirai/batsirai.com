@@ -143,47 +143,64 @@ async function fetchStats(env: Env): Promise<StatsBody> {
 	}
 }
 
+// Geo + timezone for the current visitor, derived from Cloudflare's per-request
+// `cf` data (same Maxmind GeoIP that PostHog enriches person profiles with — but
+// available instantly on first hit so the "we see you" moment in YourSession
+// lands immediately). Shared by the /posthog and /owner application pages.
+function whereamiResponse(request: Request): Response {
+	const cf = (request as Request & { cf?: IncomingRequestCfProperties }).cf;
+	const body = {
+		city: cf?.city ?? null,
+		region: cf?.region ?? null,
+		regionCode: cf?.regionCode ?? null,
+		country: cf?.country ?? null,
+		continent: cf?.continent ?? null,
+		timezone: cf?.timezone ?? null,
+		postalCode: cf?.postalCode ?? null,
+	};
+	return Response.json(body, { headers: { "cache-control": "no-store" } });
+}
+
+// Serves a single-page application dashboard mounted under `prefix` (e.g.
+// "/posthog" or "/owner"). Both pages share the same PostHog instrumentation
+// and per-visitor geo, so the only thing that varies is the URL prefix and the
+// static-asset directory the Worker falls back to for client-side routing.
+async function serveApp(
+	prefix: string,
+	url: URL,
+	request: Request,
+	env: Env,
+): Promise<Response> {
+	if (url.pathname === `${prefix}/api/stats`) {
+		const body = await fetchStats(env);
+		return Response.json(body, {
+			headers: { "cache-control": "public, max-age=30" },
+		});
+	}
+	if (url.pathname === `${prefix}/api/whereami`) {
+		return whereamiResponse(request);
+	}
+	if (url.pathname === prefix) {
+		return Response.redirect(`${url.origin}${prefix}/`, 301);
+	}
+
+	const assetResponse = await env.ASSETS.fetch(request);
+	if (assetResponse.status === 404) {
+		return env.ASSETS.fetch(new Request(`${url.origin}${prefix}/index.html`));
+	}
+	return assetResponse;
+}
+
 export default {
 	async fetch(request: Request, env: Env): Promise<Response> {
 		const url = new URL(request.url);
 
 		if (url.pathname === "/posthog" || url.pathname.startsWith("/posthog/")) {
-			if (url.pathname === "/posthog/api/stats") {
-				const body = await fetchStats(env);
-				return Response.json(body, {
-					headers: { "cache-control": "public, max-age=30" },
-				});
-			}
+			return serveApp("/posthog", url, request, env);
+		}
 
-			// Geo + timezone for the current visitor, derived from Cloudflare's
-			// per-request `cf` data (same Maxmind GeoIP that PostHog enriches
-			// person profiles with — but available instantly on first hit so
-			// the "we see you" moment in YourSession lands immediately).
-			if (url.pathname === "/posthog/api/whereami") {
-				const cf = (request as Request & { cf?: IncomingRequestCfProperties }).cf;
-				const body = {
-					city: cf?.city ?? null,
-					region: cf?.region ?? null,
-					regionCode: cf?.regionCode ?? null,
-					country: cf?.country ?? null,
-					continent: cf?.continent ?? null,
-					timezone: cf?.timezone ?? null,
-					postalCode: cf?.postalCode ?? null,
-				};
-				return Response.json(body, {
-					headers: { "cache-control": "no-store" },
-				});
-			}
-
-			if (url.pathname === "/posthog") {
-				return Response.redirect(`${url.origin}/posthog/`, 301);
-			}
-
-			const assetResponse = await env.ASSETS.fetch(request);
-			if (assetResponse.status === 404) {
-				return env.ASSETS.fetch(new Request(`${url.origin}/posthog/index.html`));
-			}
-			return assetResponse;
+		if (url.pathname === "/owner" || url.pathname.startsWith("/owner/")) {
+			return serveApp("/owner", url, request, env);
 		}
 
 		if (url.pathname === "/photo.jpg") {

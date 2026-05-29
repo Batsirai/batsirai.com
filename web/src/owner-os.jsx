@@ -1,0 +1,3665 @@
+import React from "react";
+import { createPortal } from "react-dom";
+
+
+// tweaks-panel.jsx
+// Reusable Tweaks shell + form-control helpers.
+//
+// Owns the host protocol (listens for __activate_edit_mode / __deactivate_edit_mode,
+// posts __edit_mode_available / __edit_mode_set_keys / __edit_mode_dismissed) so
+// individual prototypes don't re-roll it. Ships a consistent set of controls so you
+// don't hand-draw <input type="range">, segmented radios, steppers, etc.
+//
+// Usage (in an HTML file that loads React + Babel):
+//
+//   const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+//     "primaryColor": "#D97757",
+//     "palette": ["#D97757", "#29261b", "#f6f4ef"],
+//     "fontSize": 16,
+//     "density": "regular",
+//     "dark": false
+//   }/*EDITMODE-END*/;
+//
+//   function App() {
+//     const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
+//     return (
+//       <div style={{ fontSize: t.fontSize, color: t.primaryColor }}>
+//         Hello
+//         <TweaksPanel>
+//           <TweakSection label="Typography" />
+//           <TweakSlider label="Font size" value={t.fontSize} min={10} max={32} unit="px"
+//                        onChange={(v) => setTweak('fontSize', v)} />
+//           <TweakRadio  label="Density" value={t.density}
+//                        options={['compact', 'regular', 'comfy']}
+//                        onChange={(v) => setTweak('density', v)} />
+//           <TweakSection label="Theme" />
+//           <TweakColor  label="Primary" value={t.primaryColor}
+//                        options={['#D97757', '#2A6FDB', '#1F8A5B', '#7A5AE0']}
+//                        onChange={(v) => setTweak('primaryColor', v)} />
+//           <TweakColor  label="Palette" value={t.palette}
+//                        options={[['#D97757', '#29261b', '#f6f4ef'],
+//                                  ['#475569', '#0f172a', '#f1f5f9']]}
+//                        onChange={(v) => setTweak('palette', v)} />
+//           <TweakToggle label="Dark mode" value={t.dark}
+//                        onChange={(v) => setTweak('dark', v)} />
+//         </TweaksPanel>
+//       </div>
+//     );
+//   }
+//
+// ─────────────────────────────────────────────────────────────────────────────
+
+const __TWEAKS_STYLE = `
+  .twk-panel{position:fixed;right:16px;bottom:16px;z-index:2147483646;width:280px;
+    max-height:calc(100vh - 32px);display:flex;flex-direction:column;
+    transform:scale(var(--dc-inv-zoom,1));transform-origin:bottom right;
+    background:rgba(250,249,247,.78);color:#29261b;
+    -webkit-backdrop-filter:blur(24px) saturate(160%);backdrop-filter:blur(24px) saturate(160%);
+    border:.5px solid rgba(255,255,255,.6);border-radius:14px;
+    box-shadow:0 1px 0 rgba(255,255,255,.5) inset,0 12px 40px rgba(0,0,0,.18);
+    font:11.5px/1.4 ui-sans-serif,system-ui,-apple-system,sans-serif;overflow:hidden}
+  .twk-hd{display:flex;align-items:center;justify-content:space-between;
+    padding:10px 8px 10px 14px;cursor:move;user-select:none}
+  .twk-hd b{font-size:12px;font-weight:600;letter-spacing:.01em}
+  .twk-x{appearance:none;border:0;background:transparent;color:rgba(41,38,27,.55);
+    width:22px;height:22px;border-radius:6px;cursor:default;font-size:13px;line-height:1}
+  .twk-x:hover{background:rgba(0,0,0,.06);color:#29261b}
+  .twk-body{padding:2px 14px 14px;display:flex;flex-direction:column;gap:10px;
+    overflow-y:auto;overflow-x:hidden;min-height:0;
+    scrollbar-width:thin;scrollbar-color:rgba(0,0,0,.15) transparent}
+  .twk-body::-webkit-scrollbar{width:8px}
+  .twk-body::-webkit-scrollbar-track{background:transparent;margin:2px}
+  .twk-body::-webkit-scrollbar-thumb{background:rgba(0,0,0,.15);border-radius:4px;
+    border:2px solid transparent;background-clip:content-box}
+  .twk-body::-webkit-scrollbar-thumb:hover{background:rgba(0,0,0,.25);
+    border:2px solid transparent;background-clip:content-box}
+  .twk-row{display:flex;flex-direction:column;gap:5px}
+  .twk-row-h{flex-direction:row;align-items:center;justify-content:space-between;gap:10px}
+  .twk-lbl{display:flex;justify-content:space-between;align-items:baseline;
+    color:rgba(41,38,27,.72)}
+  .twk-lbl>span:first-child{font-weight:500}
+  .twk-val{color:rgba(41,38,27,.5);font-variant-numeric:tabular-nums}
+
+  .twk-sect{font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;
+    color:rgba(41,38,27,.45);padding:10px 0 0}
+  .twk-sect:first-child{padding-top:0}
+
+  .twk-field{appearance:none;box-sizing:border-box;width:100%;min-width:0;height:26px;padding:0 8px;
+    border:.5px solid rgba(0,0,0,.1);border-radius:7px;
+    background:rgba(255,255,255,.6);color:inherit;font:inherit;outline:none}
+  .twk-field:focus{border-color:rgba(0,0,0,.25);background:rgba(255,255,255,.85)}
+  select.twk-field{padding-right:22px;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path fill='rgba(0,0,0,.5)' d='M0 0h10L5 6z'/></svg>");
+    background-repeat:no-repeat;background-position:right 8px center}
+
+  .twk-slider{appearance:none;-webkit-appearance:none;width:100%;height:4px;margin:6px 0;
+    border-radius:999px;background:rgba(0,0,0,.12);outline:none}
+  .twk-slider::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;
+    width:14px;height:14px;border-radius:50%;background:#fff;
+    border:.5px solid rgba(0,0,0,.12);box-shadow:0 1px 3px rgba(0,0,0,.2);cursor:default}
+  .twk-slider::-moz-range-thumb{width:14px;height:14px;border-radius:50%;
+    background:#fff;border:.5px solid rgba(0,0,0,.12);box-shadow:0 1px 3px rgba(0,0,0,.2);cursor:default}
+
+  .twk-seg{position:relative;display:flex;padding:2px;border-radius:8px;
+    background:rgba(0,0,0,.06);user-select:none}
+  .twk-seg-thumb{position:absolute;top:2px;bottom:2px;border-radius:6px;
+    background:rgba(255,255,255,.9);box-shadow:0 1px 2px rgba(0,0,0,.12);
+    transition:left .15s cubic-bezier(.3,.7,.4,1),width .15s}
+  .twk-seg.dragging .twk-seg-thumb{transition:none}
+  .twk-seg button{appearance:none;position:relative;z-index:1;flex:1;border:0;
+    background:transparent;color:inherit;font:inherit;font-weight:500;min-height:22px;
+    border-radius:6px;cursor:default;padding:4px 6px;line-height:1.2;
+    overflow-wrap:anywhere}
+
+  .twk-toggle{position:relative;width:32px;height:18px;border:0;border-radius:999px;
+    background:rgba(0,0,0,.15);transition:background .15s;cursor:default;padding:0}
+  .twk-toggle[data-on="1"]{background:#34c759}
+  .twk-toggle i{position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;
+    background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25);transition:transform .15s}
+  .twk-toggle[data-on="1"] i{transform:translateX(14px)}
+
+  .twk-num{display:flex;align-items:center;box-sizing:border-box;min-width:0;height:26px;padding:0 0 0 8px;
+    border:.5px solid rgba(0,0,0,.1);border-radius:7px;background:rgba(255,255,255,.6)}
+  .twk-num-lbl{font-weight:500;color:rgba(41,38,27,.6);cursor:ew-resize;
+    user-select:none;padding-right:8px}
+  .twk-num input{flex:1;min-width:0;height:100%;border:0;background:transparent;
+    font:inherit;font-variant-numeric:tabular-nums;text-align:right;padding:0 8px 0 0;
+    outline:none;color:inherit;-moz-appearance:textfield}
+  .twk-num input::-webkit-inner-spin-button,.twk-num input::-webkit-outer-spin-button{
+    -webkit-appearance:none;margin:0}
+  .twk-num-unit{padding-right:8px;color:rgba(41,38,27,.45)}
+
+  .twk-btn{appearance:none;height:26px;padding:0 12px;border:0;border-radius:7px;
+    background:rgba(0,0,0,.78);color:#fff;font:inherit;font-weight:500;cursor:default}
+  .twk-btn:hover{background:rgba(0,0,0,.88)}
+  .twk-btn.secondary{background:rgba(0,0,0,.06);color:inherit}
+  .twk-btn.secondary:hover{background:rgba(0,0,0,.1)}
+
+  .twk-swatch{appearance:none;-webkit-appearance:none;width:56px;height:22px;
+    border:.5px solid rgba(0,0,0,.1);border-radius:6px;padding:0;cursor:default;
+    background:transparent;flex-shrink:0}
+  .twk-swatch::-webkit-color-swatch-wrapper{padding:0}
+  .twk-swatch::-webkit-color-swatch{border:0;border-radius:5.5px}
+  .twk-swatch::-moz-color-swatch{border:0;border-radius:5.5px}
+
+  .twk-chips{display:flex;gap:6px}
+  .twk-chip{position:relative;appearance:none;flex:1;min-width:0;height:46px;
+    padding:0;border:0;border-radius:6px;overflow:hidden;cursor:default;
+    box-shadow:0 0 0 .5px rgba(0,0,0,.12),0 1px 2px rgba(0,0,0,.06);
+    transition:transform .12s cubic-bezier(.3,.7,.4,1),box-shadow .12s}
+  .twk-chip:hover{transform:translateY(-1px);
+    box-shadow:0 0 0 .5px rgba(0,0,0,.18),0 4px 10px rgba(0,0,0,.12)}
+  .twk-chip[data-on="1"]{box-shadow:0 0 0 1.5px rgba(0,0,0,.85),
+    0 2px 6px rgba(0,0,0,.15)}
+  .twk-chip>span{position:absolute;top:0;bottom:0;right:0;width:34%;
+    display:flex;flex-direction:column;box-shadow:-1px 0 0 rgba(0,0,0,.1)}
+  .twk-chip>span>i{flex:1;box-shadow:0 -1px 0 rgba(0,0,0,.1)}
+  .twk-chip>span>i:first-child{box-shadow:none}
+  .twk-chip svg{position:absolute;top:6px;left:6px;width:13px;height:13px;
+    filter:drop-shadow(0 1px 1px rgba(0,0,0,.3))}
+`;
+
+// ── useTweaks ───────────────────────────────────────────────────────────────
+// Single source of truth for tweak values. setTweak persists via the host
+// (__edit_mode_set_keys → host rewrites the EDITMODE block on disk).
+function useTweaks(defaults) {
+  const [values, setValues] = React.useState(defaults);
+  // Accepts either setTweak('key', value) or setTweak({ key: value, ... }) so a
+  // useState-style call doesn't write a "[object Object]" key into the persisted
+  // JSON block.
+  const setTweak = React.useCallback((keyOrEdits, val) => {
+    const edits = typeof keyOrEdits === 'object' && keyOrEdits !== null
+      ? keyOrEdits : { [keyOrEdits]: val };
+    setValues((prev) => ({ ...prev, ...edits }));
+    window.parent.postMessage({ type: '__edit_mode_set_keys', edits }, '*');
+    // Same-window signal so in-page listeners (deck-stage rail thumbnails)
+    // can react — the parent message only reaches the host, not peers.
+    window.dispatchEvent(new CustomEvent('tweakchange', { detail: edits }));
+  }, []);
+  return [values, setTweak];
+}
+
+// ── TweaksPanel ─────────────────────────────────────────────────────────────
+// Floating shell. Registers the protocol listener BEFORE announcing
+// availability — if the announce ran first, the host's activate could land
+// before our handler exists and the toolbar toggle would silently no-op.
+// The close button posts __edit_mode_dismissed so the host's toolbar toggle
+// flips off in lockstep; the host echoes __deactivate_edit_mode back which
+// is what actually hides the panel.
+function TweaksPanel({ title = 'Tweaks', children }) {
+  const [open, setOpen] = React.useState(false);
+  const dragRef = React.useRef(null);
+  const offsetRef = React.useRef({ x: 16, y: 16 });
+  const PAD = 16;
+
+  const clampToViewport = React.useCallback(() => {
+    const panel = dragRef.current;
+    if (!panel) return;
+    const w = panel.offsetWidth, h = panel.offsetHeight;
+    const maxRight = Math.max(PAD, window.innerWidth - w - PAD);
+    const maxBottom = Math.max(PAD, window.innerHeight - h - PAD);
+    offsetRef.current = {
+      x: Math.min(maxRight, Math.max(PAD, offsetRef.current.x)),
+      y: Math.min(maxBottom, Math.max(PAD, offsetRef.current.y)),
+    };
+    panel.style.right = offsetRef.current.x + 'px';
+    panel.style.bottom = offsetRef.current.y + 'px';
+  }, []);
+
+  React.useEffect(() => {
+    if (!open) return;
+    clampToViewport();
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', clampToViewport);
+      return () => window.removeEventListener('resize', clampToViewport);
+    }
+    const ro = new ResizeObserver(clampToViewport);
+    ro.observe(document.documentElement);
+    return () => ro.disconnect();
+  }, [open, clampToViewport]);
+
+  React.useEffect(() => {
+    const onMsg = (e) => {
+      const t = e?.data?.type;
+      if (t === '__activate_edit_mode') setOpen(true);
+      else if (t === '__deactivate_edit_mode') setOpen(false);
+    };
+    window.addEventListener('message', onMsg);
+    window.parent.postMessage({ type: '__edit_mode_available' }, '*');
+    return () => window.removeEventListener('message', onMsg);
+  }, []);
+
+  const dismiss = () => {
+    setOpen(false);
+    window.parent.postMessage({ type: '__edit_mode_dismissed' }, '*');
+  };
+
+  const onDragStart = (e) => {
+    const panel = dragRef.current;
+    if (!panel) return;
+    const r = panel.getBoundingClientRect();
+    const sx = e.clientX, sy = e.clientY;
+    const startRight = window.innerWidth - r.right;
+    const startBottom = window.innerHeight - r.bottom;
+    const move = (ev) => {
+      offsetRef.current = {
+        x: startRight - (ev.clientX - sx),
+        y: startBottom - (ev.clientY - sy),
+      };
+      clampToViewport();
+    };
+    const up = () => {
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', up);
+    };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+  };
+
+  if (!open) return null;
+  return (
+    <>
+      <style>{__TWEAKS_STYLE}</style>
+      <div ref={dragRef} className="twk-panel" data-omelette-chrome=""
+           style={{ right: offsetRef.current.x, bottom: offsetRef.current.y }}>
+        <div className="twk-hd" onMouseDown={onDragStart}>
+          <b>{title}</b>
+          <button className="twk-x" aria-label="Close tweaks"
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onClick={dismiss}>✕</button>
+        </div>
+        <div className="twk-body">
+          {children}
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ── Layout helpers ──────────────────────────────────────────────────────────
+
+function TweakSection({ label, children }) {
+  return (
+    <>
+      <div className="twk-sect">{label}</div>
+      {children}
+    </>
+  );
+}
+
+function TweakRow({ label, value, children, inline = false }) {
+  return (
+    <div className={inline ? 'twk-row twk-row-h' : 'twk-row'}>
+      <div className="twk-lbl">
+        <span>{label}</span>
+        {value != null && <span className="twk-val">{value}</span>}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+// ── Controls ────────────────────────────────────────────────────────────────
+
+function TweakSlider({ label, value, min = 0, max = 100, step = 1, unit = '', onChange }) {
+  return (
+    <TweakRow label={label} value={`${value}${unit}`}>
+      <input type="range" className="twk-slider" min={min} max={max} step={step}
+             value={value} onChange={(e) => onChange(Number(e.target.value))} />
+    </TweakRow>
+  );
+}
+
+function TweakToggle({ label, value, onChange }) {
+  return (
+    <div className="twk-row twk-row-h">
+      <div className="twk-lbl"><span>{label}</span></div>
+      <button type="button" className="twk-toggle" data-on={value ? '1' : '0'}
+              role="switch" aria-checked={!!value}
+              onClick={() => onChange(!value)}><i /></button>
+    </div>
+  );
+}
+
+function TweakRadio({ label, value, options, onChange }) {
+  const trackRef = React.useRef(null);
+  const [dragging, setDragging] = React.useState(false);
+  // The active value is read by pointer-move handlers attached for the lifetime
+  // of a drag — ref it so a stale closure doesn't fire onChange for every move.
+  const valueRef = React.useRef(value);
+  valueRef.current = value;
+
+  // Segments wrap mid-word once per-segment width runs out. The track is
+  // ~248px (280 panel − 28 body pad − 4 seg pad), each button loses 12px
+  // to its own padding, and 11.5px system-ui averages ~6.3px/char — so 2
+  // options fit ~16 chars each, 3 fit ~10. Past that (or >3 options), fall
+  // back to a dropdown rather than wrap.
+  const labelLen = (o) => String(typeof o === 'object' ? o.label : o).length;
+  const maxLen = options.reduce((m, o) => Math.max(m, labelLen(o)), 0);
+  const fitsAsSegments = maxLen <= ({ 2: 16, 3: 10 }[options.length] ?? 0);
+  if (!fitsAsSegments) {
+    // <select> emits strings — map back to the original option value so the
+    // fallback stays type-preserving (numbers, booleans) like the segment path.
+    const resolve = (s) => {
+      const m = options.find((o) => String(typeof o === 'object' ? o.value : o) === s);
+      return m === undefined ? s : typeof m === 'object' ? m.value : m;
+    };
+    return <TweakSelect label={label} value={value} options={options}
+                        onChange={(s) => onChange(resolve(s))} />;
+  }
+  const opts = options.map((o) => (typeof o === 'object' ? o : { value: o, label: o }));
+  const idx = Math.max(0, opts.findIndex((o) => o.value === value));
+  const n = opts.length;
+
+  const segAt = (clientX) => {
+    const r = trackRef.current.getBoundingClientRect();
+    const inner = r.width - 4;
+    const i = Math.floor(((clientX - r.left - 2) / inner) * n);
+    return opts[Math.max(0, Math.min(n - 1, i))].value;
+  };
+
+  const onPointerDown = (e) => {
+    setDragging(true);
+    const v0 = segAt(e.clientX);
+    if (v0 !== valueRef.current) onChange(v0);
+    const move = (ev) => {
+      if (!trackRef.current) return;
+      const v = segAt(ev.clientX);
+      if (v !== valueRef.current) onChange(v);
+    };
+    const up = () => {
+      setDragging(false);
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+
+  return (
+    <TweakRow label={label}>
+      <div ref={trackRef} role="radiogroup" onPointerDown={onPointerDown}
+           className={dragging ? 'twk-seg dragging' : 'twk-seg'}>
+        <div className="twk-seg-thumb"
+             style={{ left: `calc(2px + ${idx} * (100% - 4px) / ${n})`,
+                      width: `calc((100% - 4px) / ${n})` }} />
+        {opts.map((o) => (
+          <button key={o.value} type="button" role="radio" aria-checked={o.value === value}>
+            {o.label}
+          </button>
+        ))}
+      </div>
+    </TweakRow>
+  );
+}
+
+function TweakSelect({ label, value, options, onChange }) {
+  return (
+    <TweakRow label={label}>
+      <select className="twk-field" value={value} onChange={(e) => onChange(e.target.value)}>
+        {options.map((o) => {
+          const v = typeof o === 'object' ? o.value : o;
+          const l = typeof o === 'object' ? o.label : o;
+          return <option key={v} value={v}>{l}</option>;
+        })}
+      </select>
+    </TweakRow>
+  );
+}
+
+function TweakText({ label, value, placeholder, onChange }) {
+  return (
+    <TweakRow label={label}>
+      <input className="twk-field" type="text" value={value} placeholder={placeholder}
+             onChange={(e) => onChange(e.target.value)} />
+    </TweakRow>
+  );
+}
+
+function TweakNumber({ label, value, min, max, step = 1, unit = '', onChange }) {
+  const clamp = (n) => {
+    if (min != null && n < min) return min;
+    if (max != null && n > max) return max;
+    return n;
+  };
+  const startRef = React.useRef({ x: 0, val: 0 });
+  const onScrubStart = (e) => {
+    e.preventDefault();
+    startRef.current = { x: e.clientX, val: value };
+    const decimals = (String(step).split('.')[1] || '').length;
+    const move = (ev) => {
+      const dx = ev.clientX - startRef.current.x;
+      const raw = startRef.current.val + dx * step;
+      const snapped = Math.round(raw / step) * step;
+      onChange(clamp(Number(snapped.toFixed(decimals))));
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+  return (
+    <div className="twk-num">
+      <span className="twk-num-lbl" onPointerDown={onScrubStart}>{label}</span>
+      <input type="number" value={value} min={min} max={max} step={step}
+             onChange={(e) => onChange(clamp(Number(e.target.value)))} />
+      {unit && <span className="twk-num-unit">{unit}</span>}
+    </div>
+  );
+}
+
+// Relative-luminance contrast pick — checkmarks drawn over a swatch need to
+// read on both #111 and #fafafa without per-option configuration. Hex input
+// only (#rgb / #rrggbb); named or rgb()/hsl() colors fall through to "light".
+function __twkIsLight(hex) {
+  const h = String(hex).replace('#', '');
+  const x = h.length === 3 ? h.replace(/./g, (c) => c + c) : h.padEnd(6, '0');
+  const n = parseInt(x.slice(0, 6), 16);
+  if (Number.isNaN(n)) return true;
+  const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  return r * 299 + g * 587 + b * 114 > 148000;
+}
+
+const __TwkCheck = ({ light }) => (
+  <svg viewBox="0 0 14 14" aria-hidden="true">
+    <path d="M3 7.2 5.8 10 11 4.2" fill="none" strokeWidth="2.2"
+          strokeLinecap="round" strokeLinejoin="round"
+          stroke={light ? 'rgba(0,0,0,.78)' : '#fff'} />
+  </svg>
+);
+
+// TweakColor — curated color/palette picker. Each option is either a single
+// hex string or an array of 1-5 hex strings; the card adapts — a lone color
+// renders solid, a palette renders colors[0] as the hero (left ~2/3) with the
+// rest stacked in a sharp column on the right. onChange emits the
+// option in the shape it was passed (string stays string, array stays array).
+// Without options it falls back to the native color input for back-compat.
+function TweakColor({ label, value, options, onChange }) {
+  if (!options || !options.length) {
+    return (
+      <div className="twk-row twk-row-h">
+        <div className="twk-lbl"><span>{label}</span></div>
+        <input type="color" className="twk-swatch" value={value}
+               onChange={(e) => onChange(e.target.value)} />
+      </div>
+    );
+  }
+  // Native <input type=color> emits lowercase hex per the HTML spec, so
+  // compare case-insensitively. String() guards JSON.stringify(undefined),
+  // which returns the primitive undefined (no .toLowerCase).
+  const key = (o) => String(JSON.stringify(o)).toLowerCase();
+  const cur = key(value);
+  return (
+    <TweakRow label={label}>
+      <div className="twk-chips" role="radiogroup">
+        {options.map((o, i) => {
+          const colors = Array.isArray(o) ? o : [o];
+          const [hero, ...rest] = colors;
+          const sup = rest.slice(0, 4);
+          const on = key(o) === cur;
+          return (
+            <button key={i} type="button" className="twk-chip" role="radio"
+                    aria-checked={on} data-on={on ? '1' : '0'}
+                    aria-label={colors.join(', ')} title={colors.join(' · ')}
+                    style={{ background: hero }}
+                    onClick={() => onChange(o)}>
+              {sup.length > 0 && (
+                <span>
+                  {sup.map((c, j) => <i key={j} style={{ background: c }} />)}
+                </span>
+              )}
+              {on && <__TwkCheck light={__twkIsLight(hero)} />}
+            </button>
+          );
+        })}
+      </div>
+    </TweakRow>
+  );
+}
+
+function TweakButton({ label, onClick, secondary = false }) {
+  return (
+    <button type="button" className={secondary ? 'twk-btn secondary' : 'twk-btn'}
+            onClick={onClick}>{label}</button>
+  );
+}
+
+/* batsirai.os — menus, terminal, command palette, app context */
+
+const AppCtx = React.createContext(null);
+const useApp = () => React.useContext(AppCtx);
+
+/* ─── Reusable drag hook for modals + floating windows ─── */
+function useDrag() {
+  const [pos, setPos] = React.useState({ x: 0, y: 0 });
+  const [dragging, setDragging] = React.useState(false);
+  const start = React.useRef(null);
+
+  React.useEffect(() => {
+    if (!dragging) return;
+    const onMove = (e) => {
+      const p = e.touches ? e.touches[0] : e;
+      const dx = p.clientX - start.current.px;
+      const dy = p.clientY - start.current.py;
+      setPos({ x: start.current.x + dx, y: start.current.y + dy });
+    };
+    const onUp = () => setDragging(false);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    window.addEventListener('touchmove', onMove, { passive: true });
+    window.addEventListener('touchend', onUp);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      window.removeEventListener('touchmove', onMove);
+      window.removeEventListener('touchend', onUp);
+    };
+  }, [dragging]);
+
+  const onDown = (e) => {
+    if (e.target.closest('button') || e.target.closest('input') ||
+        e.target.closest('iframe') || e.target.closest('a')) return;
+    const p = e.touches ? e.touches[0] : e;
+    start.current = { px: p.clientX, py: p.clientY, x: pos.x, y: pos.y };
+    setDragging(true);
+    e.stopPropagation();
+  };
+
+  return { pos, dragging, onDown };
+}
+
+/* ─── Menu dropdown primitive ─── */
+function useMenu() {
+  const [open, setOpen] = React.useState(null);
+  React.useEffect(() => {
+    if (!open) return;
+    const onDoc = (e) => {
+      if (!e.target.closest('.mb-item') && !e.target.closest('.menu-pop')) setOpen(null);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
+  return [open, setOpen];
+}
+
+function MenuItem({ label, kbd, checked, disabled, onClick, sub, hasSub }) {
+  return (
+    <div
+      className={`mi ${checked ? 'checked' : ''} ${disabled ? 'disabled' : ''} ${hasSub ? 'has-sub' : ''}`}
+      onClick={(e) => { e.stopPropagation(); if (!disabled) onClick && onClick(); }}>
+      <span>{label}</span>
+      {kbd && <span className="kbd">{kbd}</span>}
+    </div>
+  );
+}
+function MenuSep() { return <hr />; }
+function MenuLabel({ children }) { return <div className="mi-sub">{children}</div>; }
+
+/* ─── The bar ─── */
+function MenuBar({ now }) {
+  const app = useApp();
+  const [open, setOpen] = useMenu();
+
+  const tagFilters = ['ALL','BUILT','FOUNDED','LED','EXITED'];
+
+  return (
+    <div className="menubar">
+      <div className="mb-logo">
+        <span className="glyph"></span>
+        <span>batsirai.os</span>
+      </div>
+
+      {/* FILE */}
+      <div className={`mb-item ${open === 'file' ? 'open' : ''}`}
+           onClick={(e) => { e.stopPropagation(); setOpen(open === 'file' ? null : 'file'); }}>
+        File
+        {open === 'file' && (
+          <div className="menu-pop" onClick={() => setOpen(null)}>
+            <MenuItem label="Open resume.pdf ↗"
+              onClick={() => window.open('Batsirai-Chada-Resume.pdf', '_blank')} kbd="⌘O" />
+            <MenuItem label="Save snapshot.png" onClick={() => app.snapshot()} kbd="⌘S" />
+            <MenuItem label="Print dashboard" onClick={() => window.print()} kbd="⌘P" />
+            <MenuSep />
+            <MenuLabel>Recent applications</MenuLabel>
+            <MenuItem label="✓ Owner · Growth PM (AI-native builder)" disabled />
+            <MenuItem label="(no others — single-target)" disabled />
+            <MenuSep />
+            <MenuItem label="Quit" onClick={() => app.openPalette('exit')} kbd="⌘Q" />
+          </div>
+        )}
+      </div>
+
+      {/* VIEW */}
+      <div className={`mb-item ${open === 'view' ? 'open' : ''}`}
+           onClick={(e) => { e.stopPropagation(); setOpen(open === 'view' ? null : 'view'); }}>
+        View
+        {open === 'view' && (
+          <div className="menu-pop" onClick={() => setOpen(null)}>
+            <MenuLabel>Theme</MenuLabel>
+            <MenuItem label="Owner"    checked={app.palette==='owner'}    onClick={() => app.setPalette('owner')} />
+            <MenuItem label="Apple"    checked={app.palette==='apple'}    onClick={() => app.setPalette('apple')} />
+            <MenuItem label="Terminal" checked={app.palette==='terminal'} onClick={() => app.setPalette('terminal')} />
+            <MenuSep />
+            <MenuItem label="Mono everywhere" checked={app.monoEverywhere}
+              onClick={() => app.setMono(!app.monoEverywhere)} />
+            <MenuItem label="Show desktop icons" checked={app.showDesktop}
+              onClick={() => app.setShowDesktop(!app.showDesktop)} />
+            <MenuItem label="Show paper grain" checked={app.showGrain}
+              onClick={() => app.setShowGrain(!app.showGrain)} />
+            <MenuItem label="Show mini music player" checked={app.showMiniPlayer}
+              onClick={() => app.setShowMiniPlayer(!app.showMiniPlayer)} kbd="⌘M" />
+            <MenuSep />
+            <MenuItem label="Reset window position" onClick={() => app.resetWindow()} kbd="⌘0" />
+          </div>
+        )}
+      </div>
+
+      {/* CAREER */}
+      <div className={`mb-item ${open === 'career' ? 'open' : ''}`}
+           onClick={(e) => { e.stopPropagation(); setOpen(open === 'career' ? null : 'career'); }}>
+        Career
+        {open === 'career' && (
+          <div className="menu-pop" onClick={() => setOpen(null)}>
+            <MenuLabel>Filter timeline by tag</MenuLabel>
+            {tagFilters.map((t) => (
+              <MenuItem key={t} label={t==='ALL' ? 'All milestones' : t.toLowerCase()}
+                checked={app.tagFilter===t}
+                onClick={() => app.setTagFilter(t)} />
+            ))}
+            <MenuSep />
+            <MenuLabel>Jump to</MenuLabel>
+            <MenuItem label="↳ Bio"                   onClick={() => app.jumpTo('s-kpis')} />
+            <MenuItem label="↳ Builder Timeline"      onClick={() => app.jumpTo('s-timeline')} />
+            <MenuItem label="↳ Experiment Scoreboard" onClick={() => app.jumpTo('s-exp')} />
+            <MenuItem label="↳ Values in Practice"    onClick={() => app.jumpTo('s-values')} />
+            <MenuItem label="↳ Currently Building"    onClick={() => app.jumpTo('s-commits')} />
+            <MenuItem label="↳ My Music"               onClick={() => app.jumpTo('s-music')} />
+            <MenuItem label="↳ Live Funnel"           onClick={() => app.jumpTo('s-live')} />
+            <MenuSep />
+            <MenuItem label="Expand all milestones" onClick={() => app.tlExpandAll(true)} />
+            <MenuItem label="Collapse all"          onClick={() => app.tlExpandAll(false)} />
+          </div>
+        )}
+      </div>
+
+      {/* RUN */}
+      <div className={`mb-item ${open === 'run' ? 'open' : ''}`}
+           onClick={(e) => { e.stopPropagation(); setOpen(open === 'run' ? null : 'run'); }}>
+        Run
+        {open === 'run' && (
+          <div className="menu-pop" onClick={() => setOpen(null)}>
+            <MenuLabel>Scripts</MenuLabel>
+            <MenuItem label="why_hire.sh"            onClick={() => app.runScript('why_hire')} />
+            <MenuItem label="check_availability.sh"  onClick={() => app.runScript('availability')} />
+            <MenuItem label="ping_batsirai.sh"       onClick={() => app.runScript('ping')} />
+            <MenuItem label="request_interview.sh"   onClick={() => app.runScript('interview')} />
+            <MenuItem label="benchmark_vs_role.sh"   onClick={() => app.runScript('benchmark')} />
+            <MenuSep />
+            <MenuItem label="apply_to_owner.sh"      onClick={() => app.runScript('apply')} kbd="↵" />
+            <MenuSep />
+            <MenuItem label="Open command palette…" onClick={() => app.openPalette()} kbd="⌘K" />
+          </div>
+        )}
+      </div>
+
+      {/* HELP */}
+      <div className={`mb-item ${open === 'help' ? 'open' : ''}`}
+           onClick={(e) => { e.stopPropagation(); setOpen(open === 'help' ? null : 'help'); }}>
+        Help
+        {open === 'help' && (
+          <div className="menu-pop" onClick={() => setOpen(null)}>
+            <MenuItem label="What is this?"  onClick={() => app.runScript('whatami')} />
+            <MenuItem label="Keyboard shortcuts" onClick={() => app.runScript('keys')} />
+            <MenuItem label="About batsirai.os" onClick={() => app.runScript('about')} />
+          </div>
+        )}
+      </div>
+
+      <div className="mb-spacer"></div>
+      <div className="mb-right">
+        <button className={`mb-music-toggle ${app.showMiniPlayer ? 'on' : ''}`}
+                onClick={() => app.setShowMiniPlayer(!app.showMiniPlayer)}
+                title={app.showMiniPlayer ? 'Hide mini player (⌘M)' : 'Show mini player (⌘M)'}>
+          {app.showMiniPlayer ? (
+            <span className="mb-eq"><i></i><i></i><i></i><i></i></span>
+          ) : (
+            <span className="mb-note">♪</span>
+          )}
+        </button>
+        <span className="live"><span className="live-dot"></span> rec</span>
+        <MenuBarCmdk />
+        <span>v0.2</span>
+        <span>{now}</span>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Terminal modal ─── */
+const SCRIPTS = {
+  why_hire: {
+    title: "~/career/why_hire.sh",
+    lines: [
+      { p: "$ ./why_hire.sh --target=owner --role='growth pm · ai-native builder'", kind: 'cmd' },
+      { wait: 220 },
+      { out: "compiling argument...", kind: 'out' },
+      { wait: 350 },
+      { out: "01  shipped 9 products across SaaS, marketplaces, AI, creator tools.", b: ['9'] },
+      { out: "02  founded → exited twice. SongSuggest (sold) + Quickstaff (sold 2022)." },
+      { out: "03  ran experiments with money attached — $2M VAT recovered, +11% activation." },
+      { out: "04  currently shipping Already Loved + product shipper at Ensurall." },
+      { wait: 220 },
+      { out: "→ verdict: hires builders who can produce numbers and tell the story.", kind: 'ok' },
+      { out: "→ that is, demonstrably, my entire career.", kind: 'ok' },
+    ],
+  },
+  availability: {
+    title: "~/career/check_availability.sh",
+    lines: [
+      { p: "$ ./check_availability.sh", kind: 'cmd' },
+      { wait: 240 },
+      { out: "current commitments → Already Loved (founder-led, day job)" },
+      { out: "" },
+      { out: "interview availability (next 14 days)", kind: 'warn' },
+      { out: "  mon  ████████░░░░░░░░░░  09:00–13:00 GMT" },
+      { out: "  tue  ░░░░████████████░░  10:00–18:00 GMT" },
+      { out: "  wed  ████████████░░░░░░  09:00–15:00 GMT" },
+      { out: "  thu  ░░░░░░░░████████░░  13:00–17:00 GMT" },
+      { out: "  fri  ████████████████░░  09:00–17:00 GMT" },
+      { wait: 200 },
+      { out: "→ async-friendly. team-fit chat in any of the slots above.", kind: 'ok' },
+    ],
+  },
+  ping: {
+    title: "~/career/ping_batsirai.sh",
+    lines: [
+      { p: "$ ./ping_batsirai.sh", kind: 'cmd' },
+      { wait: 200 },
+      { out: "PING batsirai@gmail.com (mailto): bytes=0 ttl=64" },
+      { out: "reply received in 0.04s" },
+      { out: "" },
+      { out: "→ opening mail client...", kind: 'ok' },
+      { do: () => window.location.href = 'mailto:batsirai@gmail.com?subject=Hi%20from%20Owner' },
+    ],
+  },
+  interview: {
+    title: "~/career/request_interview.sh",
+    lines: [
+      { p: "$ ./request_interview.sh --employer=owner", kind: 'cmd' },
+      { wait: 240 },
+      { out: "checking calendar..." },
+      { wait: 320 },
+      { out: "calendar OK. all green this week.", kind: 'ok' },
+      { out: "" },
+      { out: "preferred next steps:" },
+      { out: "  1. 30-min culture chat" },
+      { out: "  2. async take-home if useful (I'll already have one)" },
+      { out: "  3. live working session — I learn by building" },
+      { out: "" },
+      { out: "→ reply to this dashboard, or just email me.", kind: 'ok' },
+    ],
+  },
+  benchmark: {
+    title: "~/career/benchmark_vs_role.sh",
+    lines: [
+      { p: "$ ./benchmark_vs_role.sh --role='growth pm'", kind: 'cmd' },
+      { wait: 240 },
+      { out: "loading role description from owner.com/careers..." },
+      { wait: 250 },
+      { out: "matching..." },
+      { wait: 300 },
+      { out: "" },
+      { out: "  5+ yrs product management   ✓ Buffer growth PM · Ensurall PM · founder PM", kind: 'ok' },
+      { out: "  track record of shipping    ✓ 9 products · 2 exits · 3,000+ commits in 2026", kind: 'ok' },
+      { out: "  excellent product sense     ✓ Already Loved — an opinionated identity bet", kind: 'ok' },
+      { out: "  deep customer empathy       ✓ built from a question my own son might ask", kind: 'ok' },
+      { out: "  strong data fluency         ✓ the live funnel below is this very page", kind: 'ok' },
+      { out: "  ai-native builder           ✓ shipped LLM products since 2023 · agents run my ops", kind: 'ok' },
+      { out: "  handles ambiguity           ✓ founder-led; I define the goal then go get it", kind: 'ok' },
+      { out: "" },
+      { out: "→ fit score: 7/7.  cover letter not needed; this is the cover letter.", kind: 'ok' },
+    ],
+  },
+  apply: {
+    title: "~/career/apply_to_owner.sh",
+    lines: [
+      { p: "$ ./apply_to_owner.sh --serious=true", kind: 'cmd' },
+      { wait: 200 },
+      { out: "[1/6] packaging career history       ........ ok", kind: 'ok' },
+      { wait: 220 },
+      { out: "[2/6] verifying experiment receipts  ........ ok", kind: 'ok' },
+      { wait: 220 },
+      { out: "[3/6] confirming session replay on   ........ ok", kind: 'ok' },
+      { wait: 220 },
+      { out: "[4/6] pre-flight: humour calibrated  ........ ok", kind: 'ok' },
+      { wait: 220 },
+      { out: "[5/6] resume.pdf attached            ........ ok", kind: 'ok' },
+      { wait: 220 },
+      { out: "[6/6] submitting to talent team      ........ ", kind: 'out' },
+      { wait: 600 },
+      { out: "                                              SENT.", kind: 'ok' },
+      { wait: 220 },
+      { out: "" },
+      { out: "you are reading the submission.", kind: 'warn' },
+      { out: "if you've read this far, that's the funnel working.", kind: 'warn' },
+    ],
+  },
+  whatami: {
+    title: "~/help/whatami",
+    lines: [
+      { out: "batsirai.os — a single-page career dashboard.", kind: 'out' },
+      { out: "built as a job application to owner." },
+      { out: "" },
+      { out: "use the menus above. ⌘K opens a command palette." },
+      { out: "click the lights on the title bar; drag the window." },
+      { out: "everything live is real (or close enough to make the point)." },
+    ],
+  },
+  keys: {
+    title: "~/help/keyboard_shortcuts",
+    lines: [
+      { out: "  ⌘K          command palette" },
+      { out: "  ⌘0          reset window position" },
+      { out: "  ⌘O          open resume" },
+      { out: "  ⌘P          print dashboard" },
+      { out: "  ⌘S          save snapshot" },
+      { out: "  esc         close this terminal" },
+      { out: "  dbl-click   title bar → recenter window" },
+    ],
+  },
+  about: {
+    title: "~/help/about",
+    lines: [
+      { out: "batsirai.os v0.2", kind: 'out' },
+      { out: "an original retro-dashboard interface." },
+      { out: "no restaurants were harmed in the making of this page." },
+      { out: "" },
+      { out: "design + build → batsirai chada, may 2026." },
+    ],
+  },
+};
+
+function Terminal({ scriptId, onClose, onRun }) {
+  const script = SCRIPTS[scriptId];
+  const [shown, setShown] = React.useState([]);
+  const bodyRef = React.useRef(null);
+  const { pos, dragging, onDown } = useDrag();
+
+  React.useEffect(() => {
+    setShown([]);
+    if (!script) return;
+    let cancelled = false;
+    let i = 0;
+    function step() {
+      if (cancelled) return;
+      if (i >= script.lines.length) return;
+      const line = script.lines[i];
+      i++;
+      if (line.wait) { setTimeout(step, line.wait); return; }
+      if (line.do)   { line.do(); step(); return; }
+      setShown(s => [...s, line]);
+      setTimeout(() => {
+        if (bodyRef.current) bodyRef.current.scrollTop = bodyRef.current.scrollHeight;
+      }, 0);
+      setTimeout(step, 90);
+    }
+    step();
+    return () => { cancelled = true; };
+  }, [scriptId]);
+
+  React.useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  if (!script) return null;
+  return (
+    <div className="term-backdrop" onClick={onClose}>
+      <div className={`term ${dragging ? 'dragging' : ''}`}
+           onClick={(e) => e.stopPropagation()}
+           style={{ transform: `translate(${pos.x}px, ${pos.y}px)` }}>
+        <div className="term-bar" onMouseDown={onDown} onTouchStart={onDown}
+             style={{ cursor: dragging ? 'grabbing' : 'grab' }}>
+          <div className="dots"><i className="r" onClick={onClose}></i><i className="y"></i><i className="g"></i></div>
+          <div className="t-title">{script.title}</div>
+          <button className="t-close" onClick={onClose}>×</button>
+        </div>
+        <div className="term-body" ref={bodyRef}>
+          {shown.map((line, idx) => (
+            <div className="row" key={idx}>
+              {line.p && <span className="prompt">{line.p}</span>}
+              {line.cmd && <span className="cmd">{line.cmd}</span>}
+              {line.out !== undefined && (
+                <span className={line.kind === 'ok' ? 'ok' : line.kind === 'warn' ? 'warn' : 'out'}>
+                  {line.out}
+                </span>
+              )}
+            </div>
+          ))}
+          <div className="row"><span className="prompt">$</span> <span className="caret"></span></div>
+        </div>
+        <div className="term-actions">
+          <span style={{fontSize: 10, color: '#8C8470', alignSelf:'center', marginRight: 8}}>try next:</span>
+          {['why_hire','availability','benchmark','interview','apply'].filter(s => s !== scriptId).slice(0,3).map(s => (
+            <button key={s} onClick={() => onRun(s)}>./{s}.sh</button>
+          ))}
+          <button onClick={onClose} style={{marginLeft: 'auto', borderColor:'#B8442D'}}>esc</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const CMDK_DISCOVERED_KEY = 'batsirai-cmdk-discovered';
+const CMDK_EXIT_INTENT_KEY = 'batsirai-cmdk-exit-intent';
+const CMDK_NUDGE_AFTER_MS = 60_000;
+const CMDK_NUDGE_MIN_READ_MS = 20_000;
+
+function useCmdkDiscovered() {
+  const [discovered, setDiscovered] = React.useState(() => {
+    try { return localStorage.getItem(CMDK_DISCOVERED_KEY) === '1'; } catch { return false; }
+  });
+  const markDiscovered = React.useCallback(() => {
+    setDiscovered(true);
+    try { localStorage.setItem(CMDK_DISCOVERED_KEY, '1'); } catch {}
+  }, []);
+  return [discovered, markDiscovered];
+}
+
+function useCmdkNudge(cmdkDiscovered) {
+  const [nudge, setNudge] = React.useState(false);
+  const pageStart = React.useRef(Date.now());
+  const tabsSeen = React.useRef(new Set(['readme']));
+  const fired = React.useRef(false);
+
+  const activateNudge = React.useCallback((reason) => {
+    if (cmdkDiscovered || fired.current) return;
+    fired.current = true;
+    setNudge(true);
+    capturePh('command_palette_nudge_shown', { reason });
+  }, [cmdkDiscovered]);
+
+  React.useEffect(() => {
+    if (cmdkDiscovered) return;
+    const id = window.setTimeout(() => activateNudge('timer'), CMDK_NUDGE_AFTER_MS);
+    return () => window.clearTimeout(id);
+  }, [cmdkDiscovered, activateNudge]);
+
+  const noteTabVisit = React.useCallback((tabId) => {
+    if (cmdkDiscovered || fired.current) return;
+    tabsSeen.current.add(tabId);
+    const elapsed = Date.now() - pageStart.current;
+    if (elapsed >= CMDK_NUDGE_MIN_READ_MS && tabsSeen.current.size >= 2) {
+      activateNudge('explored');
+    }
+  }, [cmdkDiscovered, activateNudge]);
+
+  return [nudge, noteTabVisit];
+}
+
+function CmdkTrigger({ compact = false, className = '', nudge = false }) {
+  const app = useApp();
+  const highlight = nudge || app.cmdkNudge;
+  return (
+    <button
+      type="button"
+      className={`cmdk-trigger ${highlight ? 'cmdk-trigger--nudge' : ''} ${compact ? 'cmdk-trigger--compact' : ''} ${className}`.trim()}
+      onClick={(e) => { e.stopPropagation(); app.openPalette('button'); }}
+      aria-label="Open command palette (⌘K)"
+    >
+      {!compact && <span className="cmdk-trigger-label">Try command palette</span>}
+      <kbd className="cmdk-trigger-kbd">⌘K</kbd>
+    </button>
+  );
+}
+
+function MenuBarCmdk() {
+  const app = useApp();
+  const nudge = app.cmdkNudge && !app.cmdkDiscovered;
+  return (
+    <span className={`mb-cmdk-wrap ${nudge ? 'mb-cmdk-wrap--nudge' : ''}`}>
+      {nudge && (
+        <span className="cmdk-nudge-callout" aria-hidden="true">
+          <span className="cmdk-nudge-arrow">→</span>
+          <span className="cmdk-nudge-text">try this</span>
+        </span>
+      )}
+      <CmdkTrigger compact nudge={nudge} />
+    </span>
+  );
+}
+
+function CmdkPromo() {
+  const app = useApp();
+  if (app.cmdkDiscovered) return null;
+  return (
+    <div className={`cmdk-promo ${app.cmdkNudge ? 'cmdk-promo--nudge' : ''}`}>
+      <p className="cmdk-promo-copy">
+        <strong>Start here:</strong> press <kbd>⌘K</kbd> (or click below) to jump tabs, run scripts, and flip themes — like a real OS.
+      </p>
+      <CmdkTrigger nudge={app.cmdkNudge} />
+    </div>
+  );
+}
+
+/* ─── Command palette ─── */
+function CommandPalette({ commands, reason, onClose }) {
+  const [q, setQ] = React.useState('');
+  const [sel, setSel] = React.useState(0);
+  const inputRef = React.useRef(null);
+  const { pos, dragging, onDown } = useDrag();
+
+  const filtered = React.useMemo(() => {
+    if (!q) return commands;
+    const s = q.toLowerCase();
+    return commands.filter(c => (c.label + ' ' + (c.cat||'')).toLowerCase().includes(s));
+  }, [q, commands]);
+
+  React.useEffect(() => { inputRef.current?.focus(); }, []);
+  React.useEffect(() => { setSel(0); }, [q]);
+
+  React.useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === 'Escape') { onClose(); return; }
+      if (e.key === 'ArrowDown') { e.preventDefault(); setSel(s => Math.min(filtered.length-1, s+1)); }
+      if (e.key === 'ArrowUp')   { e.preventDefault(); setSel(s => Math.max(0, s-1)); }
+      if (e.key === 'Enter')     { e.preventDefault(); filtered[sel]?.run(); onClose(); }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [filtered, sel, onClose]);
+
+  const exitBanner = reason === 'exit' ? (
+    <div className="cmdp-banner">
+      <span className="cmdp-banner-icon">⌘</span>
+      <span>Wait — before you go, try a command. Esc closes this and keeps you here.</span>
+    </div>
+  ) : null;
+
+  return createPortal(
+    <div className="cmdp-back" onClick={onClose}>
+      <div className={`cmdp ${dragging ? 'dragging' : ''}`}
+           onClick={(e) => e.stopPropagation()}
+           style={{ transform: `translate(${pos.x}px, ${pos.y}px)` }}>
+        {exitBanner}
+        <div className="cmdp-search" onMouseDown={onDown} onTouchStart={onDown}
+             style={{ cursor: dragging ? 'grabbing' : 'grab' }}>
+          <span className="icon">⌘</span>
+          <input ref={inputRef} value={q} onChange={e => setQ(e.target.value)} placeholder="type a command…" />
+        </div>
+        <div className="cmdp-list">
+          {filtered.length === 0 && (
+            <div className="cmdp-item" style={{color:'var(--muted)'}}>no commands match "{q}"</div>
+          )}
+          {filtered.map((c, i) => (
+            <div key={c.label} className={`cmdp-item ${i===sel?'sel':''}`}
+                 onMouseEnter={() => setSel(i)}
+                 onClick={() => { c.run(); onClose(); }}>
+              <span>{c.label}</span>
+              <span className="cat">{c.cat}</span>
+            </div>
+          ))}
+        </div>
+        <div className="cmdp-foot">
+          <span>↑↓ to navigate · ↵ to run · esc to close</span>
+          <span>{filtered.length} of {commands.length}</span>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+/* batsirai.os — components */
+
+/* ─── Desktop chrome ─── */
+function DesktopIcons({ side, items, activeTab }) {
+  return (
+    <div className={`desktop-icons ${side}`}>
+      {items.map((it, i) => {
+        const active = it.tab && it.tab === activeTab;
+        // Use <button> when there's an onClick (no href), <a> when there's a real href
+        if (it.onClick && !it.href) {
+          return (
+            <button className={`di ${active ? 'active' : ''}`} key={i} type="button"
+                    onClick={(e) => { e.preventDefault(); it.onClick(); }}>
+              <div className={`di-glyph ${it.acc || ''}`}>
+                {it.glyph}
+                {it.badge && <span className="badge">{it.badge}</span>}
+              </div>
+              <div className="di-label">
+                {it.label}
+                {it.sub && <small>{it.sub}</small>}
+              </div>
+            </button>
+          );
+        }
+        return (
+          <a className={`di ${active ? 'active' : ''}`} key={i}
+             href={it.href || "#"}
+             target={it.href && it.href.startsWith('http') ? "_blank" : undefined}
+             rel="noreferrer"
+             onClick={(e) => {
+               if (it.onClick) { e.preventDefault(); it.onClick(); }
+             }}>
+            <div className={`di-glyph ${it.acc || ''}`}>
+              {it.glyph}
+              {it.badge && <span className="badge">{it.badge}</span>}
+            </div>
+            <div className="di-label">
+              {it.label}
+              {it.sub && <small>{it.sub}</small>}
+            </div>
+          </a>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ─── Draggable window ─── */
+function DraggableWindow({ title, meta, children }) {
+  const app = useApp();
+  const [pos, setPos] = React.useState({ x: 0, y: 0 });
+  const [dragging, setDragging] = React.useState(false);
+  const start = React.useRef(null);
+
+  React.useEffect(() => {
+    if (!dragging) return;
+    const onMove = (e) => {
+      const p = e.touches ? e.touches[0] : e;
+      const dx = p.clientX - start.current.px;
+      const dy = p.clientY - start.current.py;
+      // Bound the drag so the window can't drift offscreen
+      const maxX = Math.max(40, window.innerWidth * 0.06);
+      const maxY = 24;
+      const minY = -24;
+      const nx = Math.max(-maxX, Math.min(maxX, start.current.x + dx));
+      const ny = Math.max(minY, Math.min(maxY * 4, start.current.y + dy));
+      setPos({ x: nx, y: ny });
+    };
+    const onUp = () => setDragging(false);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    window.addEventListener('touchmove', onMove, { passive: true });
+    window.addEventListener('touchend', onUp);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      window.removeEventListener('touchmove', onMove);
+      window.removeEventListener('touchend', onUp);
+    };
+  }, [dragging]);
+
+  const onDown = (e) => {
+    const p = e.touches ? e.touches[0] : e;
+    start.current = { px: p.clientX, py: p.clientY, x: pos.x, y: pos.y };
+    setDragging(true);
+  };
+
+  return (
+    <div
+      className="window-wrap"
+      style={{ transform: `translate(${pos.x}px, ${pos.y}px)` }}>
+      <main className={`window ${dragging ? 'dragging' : ''}`} data-screen-label="01 dashboard">
+        <div
+          className={`titlebar ${dragging ? 'dragging' : ''}`}
+          onMouseDown={onDown}
+          onTouchStart={onDown}
+          onDoubleClick={() => setPos({ x: 0, y: 0 })}>
+          <div className="lights" onMouseDown={(e) => e.stopPropagation()}>
+            <span className="l1" title="close (opens ⌘K)"
+                  onClick={(e) => { e.stopPropagation(); app?.openPalette?.('exit'); }}></span>
+            <span className="l2" title="minimize"></span>
+            <span className="l3" title="zoom"></span>
+          </div>
+          <div className="title"><b>{title}</b></div>
+          <div className="meta">{meta}</div>
+        </div>
+        {children}
+      </main>
+    </div>
+  );
+}
+
+function WindowHead() {
+  return null; // legacy; superseded by ProfileSidebar + TabbedMain
+}
+
+/* ─── Profile sidebar (left of window body) ─── */
+const ACHIEVEMENTS = [
+  { sticker: '✮', label: 'founder × 5', tip: 'Founded or co-founded five companies.' },
+  { sticker: '$', label: '2 exits', tip: 'Two quiet exits: SongSuggest and Quickstaff.' },
+  { sticker: '⚑', label: 'led × 3', tip: 'Led product at three companies before applying to Owner.' },
+  { sticker: '↗', label: '+11%', tip: 'Grew active publishing at Buffer by 11% year-on-year.' },
+  { sticker: '◈', label: 'early ai', tip: 'Shipped an LLM product in 2023, before it was trendy.' },
+  { sticker: '◍', label: '330k', tip: 'Products I have built have reached 330k+ users.' },
+  { sticker: '¤', label: '$5M+', tip: 'Influenced $5M+ per year in revenue at Ensurall.' },
+  { sticker: '◎', label: '3k commits', tip: '3,000+ git commits shipped in 2026 alone.' },
+];
+
+function ProfileSidebar() {
+  return (
+    <aside className="profile-side">
+      <div className="ps-photo">
+        <image-slot
+          id="batsirai-portrait"
+          shape="rect"
+          src="/owner/portrait.webp"
+          placeholder="drop a photo of you"
+          style={{ width: '100%', height: 280, display: 'block' }}>
+        </image-slot>
+      </div>
+      <div className="ps-name">
+        <h2>BATSIRAI CHADA <span className="flag" title="Canada · Zimbabwe">🇨🇦 🇿🇼</span></h2>
+        <div className="ps-tagline">Build. Ship. Learn. Repeat.</div>
+        <div className="ps-role">tech founder · builder pm · ai producer</div>
+        <a className="ps-cta"
+           href="https://calendar.app.google/LLHzx2oSeHBKtppG7"
+           target="_blank" rel="noreferrer">
+          <span className="ps-cta-dot"></span>
+          <span>Book a chat →</span>
+          <small>if you're from Owner, it's me</small>
+        </a>
+      </div>
+
+      <section className="ps-block">
+        <div className="ps-block-head">Details</div>
+        <dl className="ps-meta">
+          <dt>Reputation</dt><dd><span className="ps-rep">Builder · lvl 89</span></dd>
+          <dt>Started shipping</dt><dd>15 years ago</dd>
+          <dt>Pineapple on pizza</dt><dd><span className="ps-thumb">👍</span></dd>
+          <dt>Located</dt><dd>Toronto, CA 🇨🇦</dd>
+          <dt>Currently shipping</dt><dd>Already Loved</dd>
+          <dt>Day job</dt><dd>Product shipper · Ensurall</dd>
+          <dt>Looking at</dt><dd>Owner · Growth PM</dd>
+        </dl>
+      </section>
+
+      <section className="ps-block">
+        <div className="ps-block-head">Links</div>
+        <div className="ps-links">
+          <a href="https://calendar.app.google/LLHzx2oSeHBKtppG7" target="_blank" title="book a 30-min chat"><span className="ps-l-icon">◎</span><span>book a chat</span></a>
+          <a href="https://alreadylovedkids.com" target="_blank" title="current product"><span className="ps-l-icon">↗</span><span>alreadylovedkids.com</span></a>
+          <a href="https://github.com/Batsirai" target="_blank" title="github"><span className="ps-l-icon">{`{ }`}</span><span>github</span></a>
+          <a href="https://x.com/batsirai" target="_blank" title="x / twitter"><span className="ps-l-icon">𝕏</span><span>x.com/batsirai</span></a>
+          <a href="https://www.linkedin.com/in/batsirai-chada/" target="_blank" title="linkedin"><span className="ps-l-icon">in</span><span>linkedin</span></a>
+          <a href="mailto:batsirai@gmail.com" title="email"><span className="ps-l-icon">✉</span><span>email</span></a>
+          <a href="Batsirai-Chada-Resume.pdf" target="_blank" title="resume.pdf"><span className="ps-l-icon">$</span><span>resume.pdf</span></a>
+        </div>
+      </section>
+
+      <section className="ps-block">
+        <div className="ps-block-head">Achievements <span className="ps-arrow">↗</span></div>
+        <p className="ps-achievements-hint">Career highlights — hover any badge for detail.</p>
+        <div className="ps-achievements">
+          {ACHIEVEMENTS.map((a) => (
+            <div
+              key={a.label}
+              className="ach"
+              data-tip={a.tip}
+              tabIndex={0}
+              aria-label={`${a.label}: ${a.tip}`}
+            >
+              <div className="ach-sticker">{a.sticker}</div>
+              <span className="ach-label">{a.label}</span>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="ps-block ps-status">
+        <span className="live-dot"></span>
+        <span>session being recorded</span>
+      </section>
+    </aside>
+  );
+}
+
+/* ─── Tabbed main content (right of profile sidebar) ─── */
+function TabbedMain() {
+  const app = useApp();
+  const TABS = [
+    { id: 'readme',  label: 'Bio' },
+    { id: 'timeline',label: 'Timeline' },
+    { id: 'exp',     label: 'Experiments' },
+    { id: 'values',  label: 'Values' },
+    { id: 'building',label: 'Building' },
+    { id: 'music',   label: 'Music' },
+    { id: 'live',    label: 'Live' },
+  ];
+  const tab = app?.tab || 'readme';
+  const setTab = app?.setTab || (() => {});
+
+  return (
+    <section className="main-side">
+      <div className="tabs">
+        {TABS.map(t => (
+          <button key={t.id}
+            className={`tab ${tab === t.id ? 'on' : ''}`}
+            onClick={() => setTab(t.id)}>
+            {t.label}
+            {tab === t.id && <span className="tab-mark"></span>}
+          </button>
+        ))}
+        <div className="tabs-spacer"></div>
+        <span className="tabs-meta">↻ auto-refresh</span>
+      </div>
+
+      <div className="tab-body">
+        {tab === 'readme' && <TabReadme />}
+        {tab === 'timeline' && (
+          <>
+            <TabHeader title="Builder Timeline" sub="15 years · 10 entries · 4 founded + 1 co-founded + 3 led · click to expand" />
+            <Timeline />
+          </>
+        )}
+        {tab === 'exp' && (
+          <>
+            <TabHeader title="Experiment Scoreboard" sub="hypothesis → outcome → learning" />
+            <Experiments />
+          </>
+        )}
+        {tab === 'values' && (
+          <>
+            <TabHeader title="What Owner Looks For" sub="seven things in the role · one story each" />
+            <Values />
+          </>
+        )}
+        {tab === 'building' && (
+          <>
+            <TabHeader title="Currently Building" sub="active products · live commits" />
+            <ActiveBuilds />
+            <Commits />
+          </>
+        )}
+        {tab === 'music' && (
+          <>
+            <TabHeader title="My Music" sub="things I wrote and / or recorded" />
+            <Music />
+          </>
+        )}
+        {tab === 'live' && (
+          <>
+            <TabHeader title="Live Funnel" sub="real-time · this very page, instrumented like a growth funnel" />
+            <LiveClockStrip />
+            <YourSession />
+            <FunnelOfYou />
+            <LiveLoop />
+            <Survey />
+            <PostHogPowered />
+          </>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function TabHeader({ title, sub }) {
+  return (
+    <div className="tab-head">
+      <h2>{title}</h2>
+      <span className="tab-head-sub">{sub}</span>
+    </div>
+  );
+}
+
+/* ─── Venture info cards (readme + bio) ─── */
+const VentureCtx = React.createContext(null);
+
+const PRESS_MENTIONS = [
+  {
+    id: 'buffer-diaries',
+    outlet: 'Buffer',
+    series: 'Buffer Diaries',
+    title: 'Trust, Transparency, and Curiosity',
+    date: 'Apr 2023',
+    quote: 'After competing with about 4,000 applicants, I was fortunate to be offered the role. Life changing.',
+    excerpt: 'Growth PM on culture, remote work, and the four-day week.',
+    url: 'https://buffer.com/resources/buffer-diaries-batsirai/',
+  },
+  {
+    id: 'overflow-billboard',
+    outlet: 'Billboard',
+    series: 'Billboard Pro',
+    title: 'David Beside Goliath',
+    date: 'Jan 2015',
+    quote: 'The Overflow is betting a narrow focus will draw the attention of a market that\'s been underserved by traditional subscription services.',
+    excerpt: 'Launch coverage of the genre-specific Christian music streaming service.',
+    url: 'https://www.billboard.com/pro/overflow-christian-subscription-streaming-music-service/',
+  },
+];
+
+const VENTURES = {
+  'already-loved': {
+    id: 'already-loved',
+    name: 'Already Loved',
+    years: '2024–present',
+    role: 'Co-founder · lead engineer',
+    status: 'Live · book sales from May 2026',
+    tagline: 'AI-personalised identity books for preschoolers',
+    summary: 'Founded with my wife. Not personalised stories — personalised identity formation for the preschool years. I own product, engineering, security, logs, and the AI image pipeline. No engineering team — me, AI, my wife, and our kids.',
+    stack: 'TanStack Start · Convex · PostHog',
+    coverImage: '/owner/already-loved-book-cover.png',
+    coverAlt: 'Sample Already Loved book cover — Simmone Is Already Loved',
+    url: 'https://alreadylovedkids.com',
+    timelineTitle: 'Already Loved',
+  },
+  ensurall: {
+    id: 'ensurall',
+    name: 'Ensurall · GVC',
+    years: '2010–2022 · 2023–present',
+    role: 'Product shipper (current) · product manager (2010–2022)',
+    status: 'Day job · exclusive engagement',
+    tagline: 'Extended car warranty · B2B + B2C commerce',
+    summary: 'Architected ensurall.ca and the warranty commerce stack from 2010 as PM. Left for Buffer in 2022, came back in 2023 because shipping beats spec-writing. Now I find ideas, design them, and ship 2–3 micro-projects a week — the joy is still saying “here, I made this”.',
+    stack: 'Visualforce · Apex · JavaScript',
+    url: 'https://ensurall.ca',
+    timelineTitle: 'Ensurall',
+  },
+  owner: {
+    id: 'owner',
+    name: 'Owner',
+    years: '2026 · applying',
+    role: 'Growth PM · AI-native builder (target role)',
+    status: 'Why this application exists',
+    tagline: 'The AI-native system local business owners run on',
+    summary: 'Owner does the work for restaurant owners — driving demand, converting it, and running the day-to-day. The Grader is how owners start that journey. I want to evolve it from a high-performing funnel into an AI-powered growth system: more owners reached, more trust earned, more conversion.',
+    stack: 'product · funnels · experimentation · AI',
+    url: 'https://www.owner.com',
+  },
+  songsuggest: {
+    id: 'songsuggest',
+    name: 'SongSuggest',
+    years: '2010 · sold',
+    role: 'Co-founder',
+    status: 'Exit · award-winning',
+    tagline: 'iPhone setlist tool for musicians',
+    summary: 'Two musicians, neither app developers, shipping at the dawn of the App Store. Remote designers and devs across three continents. Industry press picked it up. A stranger once recommended our app to me at lunch — he had no idea I built it.',
+    stack: 'iOS',
+    timelineTitle: 'SongSuggest',
+  },
+  quickstaff: {
+    id: 'quickstaff',
+    name: 'Quickstaff',
+    years: '2015–2022 · sold',
+    role: 'Founder · primary shipper',
+    status: 'Exit · 4.7★ Capterra',
+    tagline: 'Bootstrapped B2B staff-scheduling SaaS',
+    summary: 'Seven years compounding to a quiet strategic exit. I shipped every product update, test, and deploy — often learning the stack from YouTube the same day. The marketing site I built still runs unchanged four years later.',
+    stack: 'Laravel · Quasar · Vue',
+    url: 'https://www.quickstaffpro.com',
+    timelineTitle: 'Quickstaff',
+  },
+  overflow: {
+    id: 'overflow',
+    name: 'The Overflow',
+    years: '2013–2019',
+    role: 'Co-founder',
+    status: 'Wound down',
+    tagline: 'First genre-specific music streaming platform',
+    summary: 'Grew from 0 to 180,000 users with no paid marketing. Catalog UX rewrite cut internal ops time 80%. Curation travelled inside artist networks faster than ads. Shut down when angel funding ran out — the lesson stayed.',
+    stack: 'iOS · Android · Web · Python · PHP',
+    timelineTitle: 'The Overflow',
+    press: PRESS_MENTIONS.find((p) => p.id === 'overflow-billboard'),
+  },
+  buffer: {
+    id: 'buffer',
+    name: 'Buffer',
+    years: '2022–2023',
+    role: 'Growth PM · led the growth team',
+    status: '150k+ MAU · +11% activation',
+    tagline: 'Social scheduling for creators and teams',
+    summary: 'One of 4,000 applicants who made it inside. Owned freemium activation and pricing migration — $2M VAT recovered, +11% activation. Loved the team; left when the work became more PRDs than pull requests.',
+    stack: 'TypeScript · Python',
+    url: 'https://buffer.com',
+    timelineTitle: 'Buffer',
+    press: PRESS_MENTIONS.find((p) => p.id === 'buffer-diaries'),
+  },
+  'maverick-city': {
+    id: 'maverick-city',
+    name: 'Maverick City Music',
+    years: '2019–2023',
+    role: 'Led digital',
+    status: '10k → 2M+ YouTube growth era',
+    tagline: 'Grammy Award-winning worship collective · digital ecosystem',
+    summary: 'Grammy Award-winning group of artists and songwriters. Built ecommerce, fan tooling, merch logistics, and writing-camp ops while the audience scaled by three orders of magnitude. The invisible infrastructure that holds up a visible brand.',
+    stack: 'Webflow · WordPress',
+    url: 'https://maverickcitymusic.com',
+    timelineTitle: 'Maverick City Music',
+  },
+  cowriter: {
+    id: 'cowriter',
+    name: 'Cowriter',
+    years: '2023',
+    role: 'Founder',
+    status: 'Shipped · early LLM bet',
+    tagline: 'GPT-powered songwriting / lyric assistant',
+    summary: 'Built before the LLM gold rush. Didn\'t nail the timing; got the muscle memory for prompt engineering and shipping AI products — the same muscle Already Loved runs on now.',
+    stack: 'iOS · Android · OpenAI',
+    url: 'https://www.getcowriter.com',
+    timelineTitle: 'Cowriter',
+  },
+  'personal-agent': {
+    id: 'personal-agent',
+    name: 'Personal Agent',
+    years: '2024–present',
+    role: 'Creator · operator',
+    status: '260+ skill sales',
+    tagline: 'Agent-run skills marketplace business',
+    summary: 'My OpenClaw / Hermes agent authors and sells Claude skills on ClawMart — two personas, 39 skills, entirely agent-built and agent-deployed. I read the meters; the agent ships.',
+    stack: 'Hermes · Python · JavaScript',
+    url: 'https://www.shopclawmart.com/creators/41476833-3478-44b6-8843-062f7c70955b',
+    timelineTitle: 'Personal Agent',
+  },
+};
+
+function ventureMilestoneIndex(venture) {
+  if (!venture?.timelineTitle) return -1;
+  return MILESTONES.findIndex((m) =>
+    m.title === venture.timelineTitle || m.title.startsWith(venture.timelineTitle)
+  );
+}
+
+function layoutVenturePopover(anchor, el) {
+  if (!anchor || !el) return { top: 12, left: 12, place: 'right' };
+  const gap = 10;
+  const pad = 12;
+  const w = el.offsetWidth;
+  const h = el.offsetHeight;
+  let left = anchor.right + gap;
+  let top = anchor.top;
+  let place = 'right';
+
+  if (left + w > window.innerWidth - pad) {
+    left = anchor.left - w - gap;
+    place = 'left';
+  }
+  if (left < pad) {
+    left = Math.max(pad, anchor.left);
+    top = anchor.bottom + gap;
+    place = 'below';
+  }
+  top = Math.min(Math.max(pad, top), window.innerHeight - h - pad);
+  left = Math.min(Math.max(pad, left), window.innerWidth - w - pad);
+  return { top, left, place };
+}
+
+function useVenturePopoverState() {
+  const [state, setState] = React.useState(null);
+  const closeTimer = React.useRef(null);
+
+  const clearCloseTimer = React.useCallback(() => {
+    clearTimeout(closeTimer.current);
+  }, []);
+
+  const close = React.useCallback(() => {
+    clearCloseTimer();
+    setState(null);
+  }, [clearCloseTimer]);
+
+  const open = React.useCallback((id, getAnchor) => {
+    clearCloseTimer();
+    setState({ id, getAnchor });
+    capturePh('venture_card_opened', { id, name: VENTURES[id].name });
+  }, [clearCloseTimer]);
+
+  const scheduleClose = React.useCallback(() => {
+    clearCloseTimer();
+    closeTimer.current = window.setTimeout(() => setState(null), 180);
+  }, [clearCloseTimer]);
+
+  const cancelClose = React.useCallback(() => {
+    clearCloseTimer();
+  }, [clearCloseTimer]);
+
+  React.useEffect(() => () => clearCloseTimer(), [clearCloseTimer]);
+
+  const ctx = React.useMemo(() => ({
+    activeId: state?.id ?? null,
+    open,
+    close,
+    scheduleClose,
+    cancelClose,
+  }), [state?.id, open, close, scheduleClose, cancelClose]);
+
+  return { state, ctx };
+}
+
+function isVentureUiNode(node) {
+  if (!node || !(node instanceof Node)) return false;
+  return Boolean(node.closest?.('.ventm-pop, .cover-lb-back'));
+}
+
+function VentureLink({ id, children, className = '' }) {
+  const ctx = React.useContext(VentureCtx);
+  const ref = React.useRef(null);
+  if (!ctx || !VENTURES[id]) return children;
+
+  const getAnchor = () => ref.current?.getBoundingClientRect() ?? null;
+  const show = () => ctx.open(id, getAnchor);
+  const isActive = ctx.activeId === id;
+
+  return (
+    <button
+      ref={ref}
+      type="button"
+      className={`venture-link ${isActive ? 'venture-link-open' : ''} ${className}`.trim()}
+      aria-expanded={isActive}
+      onMouseEnter={show}
+      onMouseLeave={ctx.scheduleClose}
+      onFocus={show}
+      onBlur={(e) => {
+        if (isVentureUiNode(e.relatedTarget)) return;
+        ctx.scheduleClose();
+      }}
+      onClick={(e) => {
+        e.preventDefault();
+        if (isActive) ctx.close();
+        else show();
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+function VentureCoverLightbox({ src, alt, onClose }) {
+  const ignoreBackdropUntil = React.useRef(Date.now() + 320);
+
+  React.useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        onClose();
+      }
+    };
+    document.addEventListener('keydown', onKey, true);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', onKey, true);
+      document.body.style.overflow = prev;
+    };
+  }, [onClose]);
+
+  function handleBackdropClick(e) {
+    if (e.target !== e.currentTarget) return;
+    if (Date.now() < ignoreBackdropUntil.current) return;
+    onClose();
+  }
+
+  return createPortal(
+    <div className="cover-lb-back" onClick={handleBackdropClick} role="dialog" aria-modal="true" aria-label="Book cover preview">
+      <figure className="cover-lb" onClick={(e) => e.stopPropagation()}>
+        <button type="button" className="cover-lb-close" onClick={onClose} aria-label="Close cover preview">×</button>
+        <img src={src} alt={alt} width={680} height={680} decoding="async" />
+        <figcaption>sample personalised cover</figcaption>
+      </figure>
+    </div>,
+    document.body
+  );
+}
+
+function VenturePopover({ venture, getAnchor, onClose, onScheduleClose, onCancelClose }) {
+  const app = useApp();
+  const popRef = React.useRef(null);
+  const [layout, setLayout] = React.useState({ top: 0, left: 0, place: 'right' });
+  const [coverOpen, setCoverOpen] = React.useState(false);
+  const milestoneIdx = ventureMilestoneIndex(venture);
+  const coverAlt = venture.coverAlt || `${venture.name} sample book cover`;
+
+  const relayout = React.useCallback(() => {
+    const anchor = getAnchor?.();
+    const el = popRef.current;
+    if (!anchor || !el) return;
+    setLayout(layoutVenturePopover(anchor, el));
+  }, [getAnchor]);
+
+  React.useLayoutEffect(() => {
+    relayout();
+  }, [relayout, venture.id]);
+
+  React.useEffect(() => {
+    const onScroll = () => relayout();
+    const onResize = () => relayout();
+    window.addEventListener('scroll', onScroll, true);
+    window.addEventListener('resize', onResize);
+    return () => {
+      window.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('resize', onResize);
+    };
+  }, [relayout]);
+
+  React.useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === 'Escape' && !coverOpen) onClose();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose, coverOpen]);
+
+  function goTimeline() {
+    onClose();
+    app?.setTab('timeline');
+    if (milestoneIdx >= 0) {
+      window.setTimeout(() => app?.jumpToMilestone?.(milestoneIdx, true), 120);
+    }
+  }
+
+  function openCover(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    onCancelClose();
+    setCoverOpen(true);
+    capturePh('venture_cover_open', { id: venture.id });
+  }
+
+  const popover = createPortal(
+    <div
+      ref={popRef}
+      className={`ventm-pop ventm-pop--${layout.place}${venture.coverImage ? ' ventm-pop--with-cover' : ''}`}
+      style={{ top: layout.top, left: layout.left }}
+      role="dialog"
+      aria-labelledby="ventm-title"
+      onMouseEnter={onCancelClose}
+      onMouseLeave={() => {
+        if (!coverOpen) onScheduleClose();
+      }}
+    >
+      <div className="kpim ventm">
+        <div className="kpim-titlebar">
+          <div className="lights">
+            <span className="l1" onClick={onClose} title="close"></span>
+            <span className="l2" title="minimize"></span>
+            <span className="l3" title="zoom"></span>
+          </div>
+          <div className="kpim-title">info · {venture.name.toLowerCase()}</div>
+          <button className="kpim-close" onClick={onClose}>×</button>
+        </div>
+        <div className="kpim-body ventm-body">
+          <div className={venture.coverImage ? 'ventm-layout ventm-layout--cover' : 'ventm-layout'}>
+            {venture.coverImage && (
+              <div className="ventm-cover-col">
+                <button
+                  type="button"
+                  className="ventm-cover-thumb"
+                  onClick={openCover}
+                  aria-label={`View sample ${venture.name} book cover`}
+                >
+                  <img
+                    src={venture.coverImage}
+                    alt=""
+                    width={104}
+                    height={104}
+                    loading="lazy"
+                    decoding="async"
+                    aria-hidden="true"
+                  />
+                  <span className="ventm-cover-thumb-label">view cover</span>
+                </button>
+              </div>
+            )}
+            <div className="ventm-copy-col">
+              <div className="ventm-status">{venture.status}</div>
+              <h3 className="ventm-name" id="ventm-title">{venture.name}</h3>
+              <div className="ventm-meta">
+                <span>{venture.years}</span>
+                <span className="ventm-dot">·</span>
+                <span>{venture.role}</span>
+              </div>
+              <p className="ventm-tagline">{venture.tagline}</p>
+              <p className="ventm-summary">{venture.summary}</p>
+              <div className="ventm-stack">
+                <span className="ventm-stack-label">stack</span>
+                <span>{venture.stack}</span>
+              </div>
+              {venture.press && (
+                <blockquote className="ventm-press">
+                  <p className="ventm-press-quote">&ldquo;{venture.press.quote}&rdquo;</p>
+                  <a
+                    className="ventm-press-link"
+                    href={venture.press.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() => {
+                      capturePh('venture_press_link', { id: venture.id, press: venture.press.id });
+                      captureOutbound(venture.press.url, 'venture_press', { id: venture.id, press: venture.press.id });
+                    }}
+                  >
+                    {venture.press.series} · {venture.press.date} ↗
+                  </a>
+                </blockquote>
+              )}
+            </div>
+          </div>
+        </div>
+        <div className="kpim-foot ventm-foot">
+          <span>move away · <kbd>esc</kbd> to close</span>
+          <div className="ventm-foot-actions">
+            {milestoneIdx >= 0 && (
+              <button type="button" className="kpim-foot-btn" onClick={goTimeline}>
+                timeline →
+              </button>
+            )}
+            {venture.press && (
+              <a
+                className="kpim-foot-btn ventm-ext"
+                href={venture.press.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => {
+                  capturePh('venture_press_link', { id: venture.id, press: venture.press.id });
+                  captureOutbound(venture.press.url, 'venture_press', { id: venture.id, press: venture.press.id });
+                }}
+              >
+                press ↗
+              </a>
+            )}
+            {venture.url && (
+              <a
+                className="kpim-foot-btn ventm-ext"
+                href={venture.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => {
+                  capturePh('venture_external_link', { id: venture.id });
+                  captureOutbound(venture.url, 'venture_site', { id: venture.id });
+                }}
+              >
+                site ↗
+              </a>
+            )}
+            <button type="button" className="kpim-foot-btn" onClick={onClose}>close</button>
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+
+  return (
+    <>
+      {popover}
+      {coverOpen && venture.coverImage && (
+        <VentureCoverLightbox
+          src={venture.coverImage}
+          alt={coverAlt}
+          onClose={() => setCoverOpen(false)}
+        />
+      )}
+    </>
+  );
+}
+
+function TabReadme() {
+  const { state: ventureState, ctx: ventureCtx } = useVenturePopoverState();
+  const venture = ventureState ? VENTURES[ventureState.id] : null;
+
+  return (
+    <VentureCtx.Provider value={ventureCtx}>
+    <div className="readme">
+      <div className="readme-eyebrow">
+        // application :: growth_pm · ai_native_builder @ owner
+      </div>
+      <h1 className="readme-h1">
+        Builder. Shipper. Singer.
+        <span className="underscore"></span>
+      </h1>
+      <p className="readme-lede">
+        Through 2022 I was a product manager. Thanks to AI, I&apos;m a product shipper now — and I take
+        great joy in saying <em>here, I made this</em>. Fifteen years of building and shipping. Serial
+        founder — two exits. Ex-Buffer PM. I&apos;ve sung in front of thousands. I love getting up every
+        day to build and ship products: digital and musical ideas alike.
+      </p>
+
+      <CmdkPromo />
+
+      <div className="readme-tldr">
+        <div className="readme-tldr-label">tldr</div>
+        <ul>
+          <li>Building <VentureLink id="already-loved"><em>Already Loved</em></VentureLink> with my wife — shipping toward an autonomous company</li>
+          <li>9 products shipped · 2 exits · 330k+ users reached · $5M+/yr influenced</li>
+          <li>Day job: product shipper at <VentureLink id="ensurall">Ensurall</VentureLink> — 2–3 micro-projects/week on Salesforce</li>
+          <li>Applying to <VentureLink id="owner">Owner</VentureLink> to evolve <b>the Grader</b> into an AI-powered growth system for restaurant owners</li>
+        </ul>
+      </div>
+
+      <KPIs />
+
+      <blockquote className="readme-callout">
+        <strong>Great software does the work for the owner.</strong> Most small-business tools
+        make owners do the work to get sales and profit. Owner does it for them. That&apos;s the
+        product I want to grow — and the Grader is where owners decide whether to trust it.
+        I think about growth through <em>product and intelligent systems</em>, not campaigns.
+      </blockquote>
+
+      <div className="bio">
+        <p>
+          What I love most is pointing at something live and saying <em>here, I made this</em>. The wonder
+          of finding out a stranger on the other side of the world is using something I made in my basement
+          never gets old. The first <VentureLink id="songsuggest">SongSuggest</VentureLink> user — somewhere we couldn't trace,
+          maybe Dubai, maybe further. The first <VentureLink id="quickstaff">Quickstaff</VentureLink> customer in 2013 calling
+          my co-founder to ask if they'd been charged by mistake. The first <VentureLink id="already-loved">Already Loved</VentureLink>
+          book sold to a family in Australia about a month ago.
+          <b> Twenty-five years</b> coding, and that moment still wrecks me.
+        </p>
+        <p>
+          The hardest part of building isn't building. It's saying <em>no</em> to
+          many, many compelling ideas. My idea-to-shipped-product rate is high enough
+          that, left unchecked, I will start six things at once. I'm purposely throttling
+          it to focus on <VentureLink id="already-loved"><b>Already Loved</b></VentureLink> with my wife.
+        </p>
+        <p>
+          I was a product manager through 2022 — at <VentureLink id="buffer">Buffer</VentureLink>, at{' '}
+          <VentureLink id="ensurall">Ensurall</VentureLink>, across founder work. Since AI became my
+          co-builder, I&apos;m a <b>product shipper</b>: see something that needs to exist, learn what you
+          don&apos;t know, ship it. My own things — <VentureLink id="songsuggest"><b>SongSuggest</b></VentureLink> (sold),{' '}
+          <VentureLink id="quickstaff"><b>Quickstaff</b></VentureLink> (sold 2022), <VentureLink id="overflow"><b> The Overflow</b></VentureLink>{' '}
+          (co-founded, wound down), <VentureLink id="cowriter">Cowriter</VentureLink>, my{' '}
+          <VentureLink id="personal-agent">Personal Agent</VentureLink>, and now <VentureLink id="already-loved"><b> Already Loved</b></VentureLink>.
+          Other people&apos;s — Buffer&apos;s freemium growth, <VentureLink id="maverick-city">Maverick City</VentureLink>&apos;s
+          digital ecosystem, the warranty portals at Ensurall.
+        </p>
+        <p>
+          Right now my day job is <b>product shipper</b> at <VentureLink id="ensurall">Ensurall + GVC</VentureLink>.
+          I love the team, the autonomy, and the cadence — <b>two to three micro-projects a week</b>
+          on a Salesforce stack. But in the end, we sell car warranties. I'd love to
+          spend my days helping <em>local business owners</em> win online — the way{' '}
+          <VentureLink id="owner">Owner</VentureLink> does the work for them.
+        </p>
+        <p>
+          What I'm most looking forward to at <VentureLink id="owner">Owner</VentureLink>: owning <b>the Grader</b> —
+          the #1 way owners start with Owner — and turning it into an AI-powered system that reaches more
+          owners, earns their trust, and converts. Funnels, experimentation, and AI products are exactly
+          what I do at <VentureLink id="already-loved">Already Loved</VentureLink> every day.
+        </p>
+        <p>
+          I'm not pitching the AI-native growth playbook. <em>I run one — this page is a working sample.</em>
+        </p>
+      </div>
+
+      <div className="readme-quickjumps">
+        <span className="rq-label">jump to</span>
+        <UseTabLink to="timeline">→ builder timeline</UseTabLink>
+        <UseTabLink to="exp">→ experiment scoreboard</UseTabLink>
+        <UseTabLink to="values">→ values in practice</UseTabLink>
+        <UseTabLink to="building">→ currently building</UseTabLink>
+        <UseTabLink to="live">→ live funnel</UseTabLink>
+      </div>
+
+      <ReadmePress />
+
+      <div className="readme-tags">
+        <span>founder × 5</span>
+        <span>2 exits</span>
+        <span>led product × 3</span>
+        <span>330k users reached</span>
+        <span>$5M+/yr influenced</span>
+        <span>2–3 micro-projects / wk</span>
+      </div>
+    </div>
+    {venture && ventureState && (
+      <VenturePopover
+        venture={venture}
+        getAnchor={ventureState.getAnchor}
+        onClose={ventureCtx.close}
+        onScheduleClose={ventureCtx.scheduleClose}
+        onCancelClose={ventureCtx.cancelClose}
+      />
+    )}
+    </VentureCtx.Provider>
+  );
+}
+
+function UseTabLink({ to, children }) {
+  const app = useApp();
+  return (
+    <button className="rq-link" onClick={() => app.setTab(to)}>{children}</button>
+  );
+}
+
+function ReadmePress() {
+  if (!PRESS_MENTIONS.length) return null;
+  return (
+    <section className="readme-press" aria-label="Press and features">
+      <div className="readme-press-label">in the press</div>
+      <ul className="readme-press-list">
+        {PRESS_MENTIONS.map((item) => (
+          <li key={item.id}>
+            <a
+              className="readme-press-item"
+              href={item.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={() => {
+                capturePh('press_mention_click', { id: item.id });
+                captureOutbound(item.url, 'press_mention', { id: item.id });
+              }}
+            >
+              <span className="readme-press-outlet">{item.outlet} · {item.series}</span>
+              <span className="readme-press-title">{item.title}</span>
+              <span className="readme-press-meta">{item.date} · {item.excerpt}</span>
+            </a>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/* ─── Section shell ─── */
+function Section({ num, title, sub, children }) {
+  return (
+    <section className="section">
+      <div className="section-head">
+        <span className="num">§{num}</span>
+        <h2>{title}</h2>
+        <span className="sub">{sub}</span>
+      </div>
+      <div className="section-body">{children}</div>
+    </section>
+  );
+}
+
+/* ─── Hero KPIs ─── */
+const KPI_DATA = [
+  { id: "k_01", num: "9", unit: "", label: "Products shipped",
+    meth: "4 founded · 1 co-founded · 1 agent-platform skills author · 3 led at other companies. Each launched, reached strangers, had a way to die.",
+    spark: "· verified",
+    breakdown: [
+      { name: "SongSuggest · founded",     v: "2010 · sold"        },
+      { name: "VCG/Ensurall · architected", v: "2010– · ongoing"      },
+      { name: "The Overflow · co-founded",  v: "2013–19 · wound down" },
+      { name: "Quickstaff · founded",      v: "2015 · sold 2022"   },
+      { name: "Maverick City · led digital",v: "2019–23"            },
+      { name: "Buffer Freemium · led PM",   v: "2022–23"           },
+      { name: "Cowriter · founded",        v: "2023 · early LLM"   },
+      { name: "Personal Agent · skills author", v: "2 personas · 39 skills · 260+ sales"},
+      { name: "Already Loved · founded",   v: "2024– · going concern" },
+    ],
+    note: "shipped = launched + reached real users + had a way to die.",
+  },
+  { id: "k_02", num: "15", unit: "y", label: "Years building",
+    meth: "Continuous from 2010 — SongSuggest at the dawn of the App Store to Already Loved today.",
+    spark: "· unbroken streak",
+    breakdown: [
+      { name: "First production ship",  v: "2010 · SongSuggest" },
+      { name: "First founder exit",     v: "2022 · Quickstaff"  },
+      { name: "First LLM product",      v: "2023 · Cowriter"    },
+      { name: "First AI agent product", v: "2025 · Personal Agent"    },
+      { name: "Current focus",          v: "Already Loved"      },
+      { name: "Day job (since 2010)",   v: "Ensurall · Product shipper" },
+    ],
+    note: "twenty-five years coding. fifteen of them shipping product I was on the hook for.",
+  },
+  { id: "k_03", num: "330", unit: "k+", label: "Users reached",
+    meth: "Buffer freemium MAUs + The Overflow active users. Audience-only metrics (YouTube views) excluded on purpose.",
+    spark: "· active users only",
+    breakdown: [
+      { name: "Buffer freemium",      v: "150,000+ MAU"  },
+      { name: "The Overflow",         v: "180,000+ users" },
+      { name: "Quickstaff customers", v: "~8,000 venues"  },
+      { name: "Personal Agent sales", v: "260+"            },
+      { name: "Already Loved",        v: "book sales · May 2026" },
+      { name: "Maverick City youtube",v: "excluded (passive)" },
+    ],
+    note: "active users only. honest math beats big math.",
+  },
+  { id: "k_04", num: "2", unit: "", label: "Founder exits",
+    meth: "SongSuggest (sold) and Quickstaff (bootstrapped, 4.7★ Capterra, sold 2022). Both quiet, both real.",
+    spark: "· both sold",
+    breakdown: [
+      { name: "SongSuggest",        v: "founded 2010 · sold"  },
+      { name: "Quickstaff",         v: "founded 2015 · sold 2022" },
+      { name: "Bootstrapping style",v: "no VC"               },
+      { name: "Quickstaff rating",  v: "4.7★ Capterra"        },
+      { name: "Currently working an exit", v: "Already Loved" },
+    ],
+    note: "two quiet exits. compounding > splashy.",
+  },
+];
+
+function KPIs() {
+  const [open, setOpen] = React.useState(null);
+  const opened = KPI_DATA.find(k => k.id === open);
+  return (
+    <>
+      <div className="kpis">
+        {KPI_DATA.map((k, i) => (
+          <div className={`kpi k-${i+1}`}
+               key={k.id}
+               onClick={() => { setOpen(k.id); capturePh('kpi_clicked', { id: k.id, label: k.label }); }}
+               role="button"
+               tabIndex={0}>
+            <div className="k-spark">{k.spark} <span className="acc">●</span></div>
+            <div className="k-id">{k.id}</div>
+            <div className="k-num">{k.num}<span className="unit">{k.unit}</span></div>
+            <div className="k-label">{k.label}</div>
+            <div className="k-meth">{k.meth}</div>
+            <div className="kpi-flip-hint">click for breakdown →</div>
+          </div>
+        ))}
+      </div>
+      {opened && <KPIModal kpi={opened} onClose={() => setOpen(null)} />}
+    </>
+  );
+}
+
+function KPIModal({ kpi, onClose }) {
+  const { pos, dragging, onDown } = useDrag();
+  React.useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+  React.useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, []);
+  return createPortal(
+    <div className="kpim-back" onClick={onClose}>
+      <div className={`kpim ${dragging ? 'dragging' : ''}`}
+           onClick={(e) => e.stopPropagation()}
+           role="dialog"
+           style={{ transform: `translate(${pos.x}px, ${pos.y}px)` }}>
+        <div className="kpim-titlebar" onMouseDown={onDown} onTouchStart={onDown}
+             style={{ cursor: dragging ? 'grabbing' : 'grab' }}>
+          <div className="lights">
+            <span className="l1" onClick={onClose} title="close"></span>
+            <span className="l2" title="minimize"></span>
+            <span className="l3" title="zoom"></span>
+          </div>
+          <div className="kpim-title">{kpi.id} · {kpi.label.toLowerCase()} · breakdown</div>
+          <button className="kpim-close" onClick={onClose}>×</button>
+        </div>
+        <div className="kpim-body">
+          <div className="kpim-hero">
+            <div className="kpim-num">{kpi.num}<span className="unit">{kpi.unit}</span></div>
+            <div className="kpim-side">
+              <div className="kpim-label">{kpi.label}</div>
+              <div className="kpim-meth">{kpi.meth}</div>
+            </div>
+          </div>
+          <div className="kpim-section-head">how this number is computed</div>
+          <table className="kpim-table">
+            <tbody>
+              {kpi.breakdown.map((row, j) => (
+                <tr key={j}>
+                  <td>{row.name}</td>
+                  <td><b>{row.v}</b></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="kpim-note">{kpi.note}</div>
+        </div>
+        <div className="kpim-foot">
+          <span>press <kbd>esc</kbd> or click outside to close</span>
+          <button className="kpim-foot-btn" onClick={onClose}>close</button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+/* ─── Timeline ─── */
+/* Listed in reverse chronological order (most recent first, like a resume). */
+const MILESTONES = [
+  { year: "2024–present", yStart: 2024, title: "Already Loved",
+    type: "AI-personalised identity books for children",
+    impact: "Book sales launched May 2026 · 3,000+ commits in 2026 · going concern",
+    tag: "FOUNDED + SHIPPING", tagClass: "tag-founded", built: true,
+    url: "https://alreadylovedkids.com",
+    detail: "Founded with my wife. Not personalised stories — personalised identity formation, the vitamin every kid needs in the preschool years. The illustrated book is the spoonful of sugar that makes it go down. I fix the bugs, harden security, check the logs, write the image prompts. No co-founder, no engineering team — just me, AI, my wife, and my kids." },
+  { year: "2024–present", yStart: 2024, title: "Personal Agent (OpenClaw / Hermes)",
+    type: "My agent. Authors and sells Claude skills on a marketplace.",
+    impact: "2 personas · 39 skills · 260+ sales · entirely agent-built and -deployed",
+    tag: "AGENT SKILLS AUTHOR", tagClass: "tag-experiment", built: true,
+    url: "https://www.shopclawmart.com/creators/41476833-3478-44b6-8843-062f7c70955b",
+    detail: "A real experiment in what an agent-run business can do. Two personas authoring 39 skills between them, 260+ sales / downloads so far — every skill agent-built and agent-deployed. I'm reading the meters; the agent is shipping." },
+  { year: "2023–present", yStart: 2023, title: "Ensurall · Product shipper",
+    type: "Product shipper · independent · exclusive engagement",
+    impact: "5× shipping cadence · 2–3 micro-projects/wk · Salesforce stack",
+    tag: "PRODUCT SHIPPER", tagClass: "tag-founded", built: true,
+    url: "https://ensurall.ca",
+    detail: "Came back after Buffer because shipping beats spec-writing. I was a PM here through 2022; AI turned me into a product shipper. Now I find ideas, design them, and ship them — 2–3 micro-projects a week, mostly on Salesforce. The joy is still saying “here, I made this”." },
+  { year: "2023", yStart: 2023, title: "Cowriter",
+    type: "GPT-powered songwriting / lyric assistant",
+    impact: "Shipped early LLM product · learned prompt engineering hands-on",
+    tag: "FOUNDED", tagClass: "tag-founded", built: true,
+    url: "https://www.getcowriter.com",
+    detail: "Built before the LLM gold rush. Didn't get the timing right; got the muscle memory. That muscle is what's letting Already Loved exist now." },
+  { year: "2022–2023", yStart: 2022, title: "Buffer · Growth",
+    type: "Growth PM · led the growth team (not the product team)",
+    impact: "150k+ MAU · +11% activation · $2M VAT recovered",
+    tag: "LED GROWTH", tagClass: "tag-led", built: false,
+    url: "https://buffer.com",
+    detail: "One of 4,000 applicants who made it inside. PM on the product team, but leading growth: I owned activation + pricing migration. Loved the team. But two-week sprints + more PRDs than PRs wasn't the work I came to do. Left to go back to building." },
+  { year: "2019–2023", yStart: 2019, title: "Maverick City Music",
+    type: "Grammy Award-winning artists & songwriters · digital ecosystem",
+    impact: "Built digital infrastructure during 10k → 2M+ YouTube growth",
+    tag: "LED DIGITAL", tagClass: "tag-led", built: false,
+    url: "https://maverickcitymusic.com",
+    detail: "Grammy Award-winning group of artists and songwriters. The audience scaled by three orders of magnitude. I led the ecommerce, the fan tooling, the merch logistics, the writing-camp ops. The kind of work that doesn't show up on a deck but holds the whole thing up." },
+  { year: "2015–2022", yStart: 2015, title: "Quickstaff",
+    type: "Bootstrapped B2B SaaS · staff-scheduling marketplace",
+    impact: "Profitable · 4.7★ Capterra · sold 2022",
+    tag: "FOUNDED + EXITED", tagClass: "tag-founded", built: true,
+    url: "https://www.quickstaffpro.com",
+    detail: "Seven years compounding to a strategic exit. Every product update, every test, every deploy — I shipped it. I built the website too — hasn't changed since I sold it four years ago. Still in contact with the new owner." },
+  { year: "2013–2019", yStart: 2013, title: "The Overflow",
+    type: "First genre-specific music streaming platform · co-founded",
+    impact: "0 → 180,000 users with no paid marketing · wound down",
+    tag: "CO-FOUNDED", tagClass: "tag-founded", built: true,
+    detail: "Co-founder. Catalog UX rewrite cut internal ops time 80%. Curation-as-distribution was the unlock — niche playlists travelled inside artist networks faster than ads ever could. Shut down when the angel funding ran out. The lesson stayed." },
+  { year: "2010–2022", yStart: 2010, title: "Ensurall · Product Manager",
+    type: "Architected B2B + B2C commerce + warranty portals · built ensurall.ca",
+    impact: "$5M+/yr revenue supported · the long technical arm",
+    tag: "PRODUCT MANAGER", tagClass: "tag-built", built: true,
+    url: "https://ensurall.ca",
+    detail: "First stint. Started architecting their commerce + warranty stack in 2010. Built ensurall.ca. Wore the PM hat over the engineering arm. Left in 2022 to try Buffer; came back in 2023 because being a quasi-founder is the work." },
+  { year: "2010", yStart: 2010, title: "SongSuggest",
+    type: "iPhone app · setlist tool for musicians",
+    impact: "Award-winning in industry press · later sold",
+    tag: "FOUNDED + EXITED", tagClass: "tag-founded", built: true,
+    detail: "Two musicians, neither of us app developers, building at the dawn of the App Store. Designers in Ukraine, devs in India and Russia, us in North America. A stranger at a conference once recommended the app to me by accident — that taught me you can just do things." },
+];
+
+function Timeline() {
+  const app = useApp();
+  const [open, setOpen] = React.useState({ 0: true }); // Already Loved open by default
+  const rowRefs = React.useRef({});
+
+  React.useEffect(() => {
+    if (!app) return;
+    app._registerTL && app._registerTL({
+      expandAll: (v) => {
+        const next = {};
+        if (v) MILESTONES.forEach((_, i) => { next[i] = true; });
+        setOpen(next);
+      },
+      jumpToMilestone: (idx, flash) => {
+        const el = rowRefs.current[idx];
+        if (!el) return;
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        if (flash) {
+          el.classList.add('flash');
+          setTimeout(() => el.classList.remove('flash'), 1400);
+        }
+      },
+    });
+  }, [app]);
+
+  const tagFilter = app?.tagFilter || 'ALL';
+  const matches = (m) => {
+    switch (tagFilter) {
+      case 'ALL':     return true;
+      case 'BUILT':   return m.built === true;
+      case 'FOUNDED': return /FOUNDED|CO-FOUNDED/.test(m.tag);
+      case 'LED':     return /LED|PRODUCT MANAGER|PRODUCT SHIPPER|AI TECH FOUNDER/.test(m.tag);
+      case 'EXITED':  return /EXITED/.test(m.tag);
+      default:        return true;
+    }
+  };
+
+  const count = MILESTONES.filter(matches).length;
+
+  return (
+    <div className="timeline">
+      <div className="tl-filterbar">
+        <span className="fb-label">filter</span>
+        {['ALL','BUILT','FOUNDED','LED','EXITED'].map((t) => (
+          <button key={t} className={`tl-chip ${tagFilter === t ? 'on' : ''}`}
+                  onClick={() => app.setTagFilter(t)}>
+            {t.toLowerCase()}
+          </button>
+        ))}
+        <span className="tl-count">showing {count} of {MILESTONES.length}</span>
+        <div className="tl-actions">
+          <span onClick={() => { const n = {}; MILESTONES.forEach((_, i) => n[i] = true); setOpen(n); }}>[expand all]</span>
+          <span onClick={() => setOpen({})}>[collapse all]</span>
+        </div>
+      </div>
+      <div className="tl-events">
+        {MILESTONES.map((m, i) => (
+          <div key={i}
+               ref={(el) => { rowRefs.current[i] = el; }}
+               className={`tl-row ${open[i] ? 'open' : ''} ${matches(m) ? '' : 'hidden'}`}
+               onClick={() => {
+                 setOpen(o => {
+                   const next = !o[i];
+                   if (next) capturePh('milestone_expanded', { milestone: m.title, year: m.yStart });
+                   return { ...o, [i]: next };
+                 });
+               }}>
+            <div className="tl-year-col">
+              <b>{m.yStart}</b>
+              <span>{m.year}</span>
+            </div>
+            <div className="tl-content">
+              <div className="tl-title">
+                {m.title}
+                {m.url && (
+                  <a className="tl-link" href={m.url} target="_blank" rel="noreferrer"
+                     onClick={(e) => {
+                       e.stopPropagation();
+                       captureOutbound(m.url, 'timeline_milestone', { milestone: m.title });
+                     }}
+                     title={m.url.replace(/^https?:\/\//,'')}>↗</a>
+                )}
+                <span className={`pill ${m.tagClass}`}>{m.tag}</span>
+                {m.built && <span className="pill tag-built-mark" title="I built this with my hands">BUILT</span>}
+              </div>
+              <div className="tl-type">{m.type}</div>
+              <div className="tl-impact"><b>{m.impact}</b></div>
+              <div className="tl-detail">{m.detail}</div>
+            </div>
+            <div className="tl-expand">expand</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ─── Experiment Scoreboard ─── */
+const EXPERIMENTS = [
+  { id: "exp_01", name: "Buffer · onboarding redesign",
+    hyp: "A re-sequenced flow lifts activation without changing acquisition.",
+    stat: "+11% activation", note: "+5% MAU lift across ~150k accounts",
+    learn: "Sequencing matters more than copy. The right step at the right time beat every word change we tried." },
+  { id: "exp_02", name: "Buffer · VAT at checkout",
+    hyp: "We can collect EU VAT without killing conversion.",
+    stat: "$2M recovered", note: "no measurable conversion hit",
+    learn: "Pricing changes need EU-specific copy. The fear is real; the impact is recoverable." },
+  { id: "exp_03", name: "Buffer · pricing migration",
+    hyp: "Self-serve migration moves users from old plans to new plans cleanly.",
+    stat: "16% / $1.5M MRR", note: "migrated voluntarily, no support spike",
+    learn: "Migration UX is retention work. Treat the move as the product, not a side quest." },
+  { id: "exp_04", name: "Overflow · catalog UX",
+    hyp: "Better internal tooling cuts ops time enough to free a hire.",
+    stat: "−80% ops time", note: "freed one curator FTE",
+    learn: "Internal tools have outsized ROI when the team is small enough to feel them daily." },
+  { id: "exp_05", name: "Already Loved · identity vs. story bet",
+    hyp: "Parents will buy a personalised identity book, not just a personalised story.",
+    stat: "First paying users", note: "beta → revenue in <2 weeks",
+    learn: "There are plenty of personalised story books. None whose purpose is identity formation. The bet is paying out." },
+  { id: "exp_06", name: "Ensurall / GVC · ship-with-AI cadence",
+    hyp: "AI-assisted dev raises my shipping rate without dropping quality.",
+    stat: "5× cadence", note: "2–3 micro-projects/wk · Salesforce stack",
+    learn: "The autonomous company is here in pieces. I'm reporting from inside one." },
+  { id: "exp_07", name: "Personal Agent (OpenClaw / Hermes) · autonomous ship",
+    hyp: "An AI agent can publish real product to a real marketplace and earn money.",
+    stat: "260+ sales · $99", note: "agent built it, agent shipped it",
+    learn: "Tiny number, real result. The agent did the work end-to-end; sales followed the install." },
+];
+
+function Experiments() {
+  return (
+    <table className="exp-table">
+      <thead>
+        <tr>
+          <th>Experiment</th>
+          <th>Hypothesis</th>
+          <th>Outcome</th>
+          <th>Learning</th>
+        </tr>
+      </thead>
+      <tbody>
+        {EXPERIMENTS.map((e) => (
+          <tr key={e.id}>
+            <td className="exp-name">
+              <span className="exp-id">{e.id}</span>
+              {e.name}
+            </td>
+            <td className="exp-hyp">{e.hyp}</td>
+            <td className="exp-out">
+              <span className="out-stat"><span className="result-dot"></span>{e.stat}</span>
+              <span className="out-note">{e.note}</span>
+            </td>
+            <td className="exp-learn">{e.learn}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+/* ─── Values component ─── */
+function Values() {
+  const [openIdx, setOpenIdx] = React.useState(0);
+
+  return (
+    <div className="values-layout">
+      <figure className="values-photo">
+        <img
+          src="/owner/already-loved-book-cover.png"
+          alt="A sample Already Loved book cover — Simmone Is Already Loved"
+          width={560}
+          height={700}
+          loading="lazy"
+        />
+        <figcaption className="values-photo-cap">
+          Already Loved — the product I ship daily. An opinionated bet built from deep
+          customer empathy. The same instincts I'd bring to the Grader.
+        </figcaption>
+      </figure>
+
+      <div className="values-acc">
+      {VALUES.map((v, i) => (
+        <article key={v.id} className={`value-card ${openIdx === i ? 'open' : ''}`}>
+            <header
+              className="value-head"
+              onClick={() => setOpenIdx(i)}
+              role="button"
+              tabIndex={0}
+              aria-expanded={openIdx === i}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  setOpenIdx(i);
+                }
+              }}
+            >
+              <div className="value-num">
+                {String(i + 1).padStart(2, '0')}
+              </div>
+              <h3 className="value-label">{v.label}</h3>
+              <span className="value-toggle">{openIdx === i ? '−' : '+'}</span>
+            </header>
+          <div className="value-body">
+            <blockquote className="value-pull">&ldquo;{v.pull}&rdquo;</blockquote>
+            {v.paragraphs.map((p, j) => <p key={j}>{p}</p>)}
+          </div>
+        </article>
+      ))}
+      </div>
+    </div>
+  );
+}
+
+/* ─── Active builds (above commits in Building tab) ─── */
+function ActiveBuilds() {
+  return (
+    <div className="ab-grid">
+      {ACTIVE_BUILDS.map((b, i) => (
+        <a key={i} className="ab-card" href={b.url} target={b.url.startsWith('http') ? '_blank' : undefined} rel="noreferrer">
+          <div className="ab-head">
+            <span className="ab-name">{b.name}</span>
+            <span className={`ab-status status-${b.status.replace(/[^a-z]/g,'-')}`}>{b.status}</span>
+          </div>
+          <p className="ab-desc">{b.desc}</p>
+          {b.commits2026 && <div className="ab-meta">↳ {b.commits2026}</div>}
+        </a>
+      ))}
+    </div>
+  );
+}
+const COMMITS = [
+  { sha: "a3f9c12", repo: "already-loved/web", msg: "fix: hardcode story-length cap for under-3s", time: "12m", files: "+18 −4" },
+  { sha: "8e1b074", repo: "already-loved/render-pipeline", msg: "perf: cache illustrator prompts per character", time: "2h", files: "+92 −31" },
+  { sha: "21caf83", repo: "already-loved/web", msg: "feat(checkout): paypal alt-flow for non-NA cards", time: "5h", files: "+204 −12" },
+  { sha: "ef07a55", repo: "batsirai/batsirai-os", msg: "wip: owner application profile v0.3", time: "9h", files: "+612 −0" },
+  { sha: "d4c1290", repo: "already-loved/render-pipeline", msg: "chore: bump model + rerun eval, identity scores up", time: "1d", files: "+6 −6" },
+  { sha: "7a98ee2", repo: "already-loved/web", msg: "fix: stripe webhook idempotency on book.completed", time: "2d", files: "+34 −2" },
+  { sha: "11b3fa1", repo: "batsirai/grandstorybook", msg: "spike: voice-first grandparent capture flow", time: "3d", files: "+158 −0" },
+  { sha: "5fcc8d0", repo: "already-loved/web", msg: "feat: gift-flow — send book to email on date", time: "4d", files: "+158 −7" },
+  { sha: "c39ab17", repo: "batsirai/personal-agent", msg: "feat: agent self-publishes skill v0.4 to marketplace", time: "5d", files: "+92 −18" },
+  { sha: "2bd0e84", repo: "batsirai/more-christlike", msg: "data: trinitarian knowledge-graph nodes batch 7", time: "6d", files: "+411 −0" },
+];
+
+/* ─── Active builds (above the commits) ─── */
+const ACTIVE_BUILDS = [
+  { name: "Already Loved", url: "https://alreadylovedkids.com",
+    desc: "AI-personalised identity books for preschoolers. Founded with my wife.",
+    status: "live", commits2026: "3,000+ commits in 2026" },
+  { name: "Personal Agent", url: "https://www.shopclawmart.com/creators/41476833-3478-44b6-8843-062f7c70955b",
+    desc: "My agent (OpenClaw / Hermes), authors and sells Claude skills. Two personas, 39 skills, 260+ sales — entirely agent-built and -deployed.",
+    status: "live", commits2026: "experiment: can an agent run a business?" },
+  { name: "Grandstorybook", url: "#",
+    desc: "Voice-first AI for grandparents — capture a story, turn it into a kid's book.",
+    status: "private alpha", commits2026: null },
+  { name: "Carson", url: "#",
+    desc: "My AI chief of staff, built on top of Hermes. Runs Already Loved in market with me — the marketing content factory, the bug triage, the daily ops.",
+    status: "live", commits2026: "toward an autonomous company" },
+  { name: "Adoro Studios", url: "https://adorostudios.com",
+    desc: "Holding co for SongSuggest, Quickstaff, Already Loved. The vehicle.",
+    status: "live", commits2026: null },
+];
+
+/* ─── What Owner looks for, with stories ─── */
+const VALUES = [
+  { id: "driver", label: "Gets things done",
+    pull: "A track record of shipping isn't a line on my resume — it's the whole resume.",
+    paragraphs: [
+      "At Quickstaff I was the primary shipper — every product update, every design, every test, every deploy, every release. Often I didn't actually know how to do what needed doing; I'd learn it from YouTube and have it in Vue.js by end of day.",
+      "With Already Loved it's the same shape, just current. I fix the bugs, harden the security, check the logs for incidents, manage the product, write the image prompts. No co-founder, no engineering team — just me, AI, my wife, and my kids.",
+      "In 2026 alone I've shipped over 3,000 commits to Already Loved. It exists, it's out there, it's delivering value to families I'll never meet. That's the driver's seat.",
+    ] },
+  { id: "public", label: "Trust is the product",
+    pull: "I default to public because I learned what it costs not to.",
+    paragraphs: [
+      "Long before I wrote a newsletter or shipped a product in public, my wife and I made a choice that taught me what transparency actually costs and gives back.",
+      "We were dating in Bible college when she got pregnant. The dean offered us a choice: keep it private, or stand in front of the school and tell them. We told them.",
+      "We weren't pelted with tomatoes. We were surrounded with love.",
+      "I walked into the cafeteria that day with the weight off my shoulders for the first time in months. I learned that secrecy is a prison, and that going public — even at real risk of rejection — was the door out.",
+      "He's grown now. The book we make for other parents, Already Loved, came directly from a question he might one day ask: was I wanted? We wrote it to answer that question for every child, regardless of how they came in.",
+    ] },
+  { id: "weird", label: "Opinionated product sense",
+    pull: "The bet looks weird from outside. Parents are saying yes.",
+    paragraphs: [
+      "When AI image generation took off, the obvious play in children's publishing was personalised AI storybooks — that's what everyone went for. I made a different bet.",
+      "Already Loved doesn't make stories. We make personalised identity books — books written to a specific child, designed to instill strong, healthy identity in the preschool years when so much of how a child sees themselves is being set.",
+      "Parents are used to buying stories. Why aren't you doing stories? But the actual job is delivering the vitamin of a beloved identity to a small child. The personalised illustrated book is the spoonful of sugar that makes it go down.",
+      "There are plenty of personalised children's books on the market. I haven't yet found one whose purpose is identity formation itself. That's the bet.",
+    ] },
+  { id: "whynot", label: "Why not now?",
+    pull: "Why not now? is the only setting I have.",
+    paragraphs: [
+      "I was one of 4,000 applicants who made it all the way into Buffer. I loved the team. But once inside, I realised the shape of the work — two-week sprints, shipping a few times a month, more PRDs and reports than pull requests — wasn't the work I'd come to do.",
+      "So I left and went back to Ensurall, where I'd already been the technical arm for over a decade and where I could actually build.",
+      "Two weeks ago my VP of Sales started running through new ideas — \"we could build this, we could do that\" — and I felt the whole day light up. That's the work.",
+      "I ship straight to production to get changes in front of internal users by lunch. Two-week sprints now feel like waiting-room music.",
+    ] },
+  { id: "optimistic", label: "You can just build it",
+    pull: "Sometimes a stranger hands your own product back to you as a gift.",
+    paragraphs: [
+      "Back when the App Store had just launched in 2010, a friend and I — both musicians, both in tech, neither of us app developers — decided to build an app that would suggest songs for musicians trying to assemble a setlist. We had no business building an app. The field was barely older than the idea.",
+      "We pulled together designers in Ukraine, developers in India and Russia, and ourselves in North America. We made it. It won awards in the industry press.",
+      "One day at a songwriting conference, the man sitting next to me at lunch leaned over and showed me his phone. \"You've got to check out this app.\" It was the one we'd made.",
+      "I assumed he must know I was the maker. He didn't. He was just genuinely recommending our app to me, the maker of it, by accident.",
+      "That's the moment that taught me you can just do things. Build the thing. Ship it. Sometimes a stranger at a conference will hand it back to you as a gift, and you'll realise the only thing between an idea and a thing in the world was the optimism to start.",
+    ] },
+];
+function Commits() {
+  return (
+    <div className="commits">
+      <div className="c-head">
+        <span className="c-prompt">batsirai@os ~ $</span>
+        <span className="c-cmd">git log --author=batsirai --since='30 days' --oneline</span>
+        <span className="c-meta">8 commits · fetched from github · cached 1h</span>
+      </div>
+      {COMMITS.map((c, i) => (
+        <div className="commit" key={i}>
+          <span className="c-sha">{c.sha}</span>
+          <span className="c-msg">
+            <span className="c-repo">{c.repo}</span>
+            {c.msg}
+            <span className="c-files">{c.files}</span>
+          </span>
+          <span className="c-time">{c.time} ago</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ─── Live Funnel ─── */
+const BAT_TZ = "America/Toronto"; // Eastern Time (ET)
+
+function offsetKey(tz, date = new Date()) {
+  const part = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz,
+    timeZoneName: "longOffset",
+  })
+    .formatToParts(date)
+    .find((p) => p.type === "timeZoneName");
+  return part?.value ?? tz;
+}
+
+function formatClockTime(date, timeZone) {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: true,
+  }).format(date);
+}
+
+function formatTzShort(date, timeZone) {
+  const part = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    timeZoneName: "short",
+  })
+    .formatToParts(date)
+    .find((p) => p.type === "timeZoneName");
+  return part?.value ?? timeZone.split("/").pop().replace(/_/g, " ");
+}
+
+function formatPlace(tz) {
+  return tz.split("/").pop().replace(/_/g, " ").toLowerCase();
+}
+
+function LiveClockStrip() {
+  const [now, setNow] = React.useState(() => new Date());
+  const visitorTz = React.useMemo(
+    () => Intl.DateTimeFormat().resolvedOptions().timeZone,
+    [],
+  );
+
+  React.useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const sameZone = offsetKey(BAT_TZ, now) === offsetKey(visitorTz, now);
+
+  return (
+    <div className="live-clocks" aria-live="polite">
+      <span className="live-dot" aria-hidden="true" />
+      <span className="live-clocks-label">now</span>
+      <span className="live-clocks-time">
+        {formatClockTime(now, BAT_TZ)}{" "}
+        <abbr title={BAT_TZ}>{formatTzShort(now, BAT_TZ)}</abbr>
+      </span>
+      <span className="live-clocks-who">batsirai · eastern</span>
+      {sameZone ? (
+        <span className="live-clocks-same">· you&apos;re in eastern too</span>
+      ) : (
+        <>
+          <span className="live-clocks-sep" aria-hidden="true">
+            ·
+          </span>
+          <span className="live-clocks-time">
+            {formatClockTime(now, visitorTz)}{" "}
+            <abbr title={visitorTz}>{formatTzShort(now, visitorTz)}</abbr>
+          </span>
+          <span className="live-clocks-who">you · {formatPlace(visitorTz)}</span>
+        </>
+      )}
+    </div>
+  );
+}
+
+function Sparkline({ data, color }) {
+  const max = Math.max(...data), min = Math.min(...data);
+  const range = max - min || 1;
+  const w = 100, h = 36;
+  const pts = data.map((d, i) =>
+    `${(i/(data.length-1))*w},${h - ((d-min)/range)*(h-4) - 2}`
+  ).join(' ');
+  const area = `0,${h} ${pts} ${w},${h}`;
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none">
+      <polygon points={area} fill={color} opacity="0.18" />
+      <polyline points={pts} fill="none" stroke={color} strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
+    </svg>
+  );
+}
+
+/* ─── Phase 3 — PostHog showcase widgets ─── */
+const PH_DASHBOARD_URL = 'https://us.posthog.com/project/436808/dashboard/1620520';
+
+/** Custom events advertised on the Live tab — keep in sync with capture() calls below. */
+const LIVE_CUSTOM_EVENTS = [
+  'kpi_clicked',
+  'milestone_expanded',
+  'survey_responded',
+  'live_widget_loaded',
+  'survey_shown',
+];
+
+const captureOnceKeys = new Set();
+function capturePh(event, properties) {
+  window.posthog?.capture(event, properties);
+}
+function capturePhOnce(event, properties) {
+  if (captureOnceKeys.has(event)) return;
+  captureOnceKeys.add(event);
+  capturePh(event, properties);
+}
+function captureOutbound(url, label, extra) {
+  capturePh('outbound_link_clicked', { url, label, ...extra });
+}
+
+function usePhStats() {
+  const [s, setS] = React.useState(null);
+  React.useEffect(() => {
+    let dead = false;
+    async function load() {
+      try {
+        const r = await fetch('/owner/api/stats');
+        if (!r.ok) return;
+        const j = await r.json();
+        if (!dead && j && j.status === 'ok') setS(j);
+      } catch {}
+    }
+    load();
+    const id = setInterval(load, 30000);
+    return () => { dead = true; clearInterval(id); };
+  }, []);
+  return s;
+}
+
+function flagOf(cc) {
+  if (!cc || cc.length !== 2) return '🌐';
+  const A = 0x1F1E6;
+  return String.fromCodePoint(A + cc.charCodeAt(0) - 65) +
+         String.fromCodePoint(A + cc.charCodeAt(1) - 65);
+}
+
+function fmtK(n) {
+  if (n == null) return null;
+  return n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(n);
+}
+
+function humanizeEvent(e) {
+  switch (e) {
+    case '$pageview':           return 'opened the dashboard';
+    case 'kpi_clicked':         return 'opened a KPI breakdown';
+    case 'milestone_expanded':  return 'expanded a timeline milestone';
+    case 'survey_responded':    return 'answered the in-page survey';
+    case 'survey_shown':        return 'reached the survey card';
+    case 'live_widget_loaded':  return 'opened the live tab';
+    case 'survey sent':         return 'submitted the popover survey';
+    case 'survey shown':        return 'saw the popover survey';
+    case '$feature_flag_called': return 'got a feature flag';
+    case '$rageclick':          return 'rage-clicked something';
+    default:                    return e.replace(/_/g, ' ');
+  }
+}
+
+function YourSession() {
+  const [ids, setIds] = React.useState(null);
+  const [geo, setGeo] = React.useState(null);
+  const [clock, setClock] = React.useState('');
+
+  React.useEffect(() => {
+    const read = () => {
+      const ph = window.posthog;
+      if (!ph || !ph.get_session_id) return;
+      try {
+        const sid = ph.get_session_id();
+        const did = ph.get_distinct_id();
+        if (sid) setIds({ sid, did });
+      } catch {}
+    };
+    read();
+    const id = setInterval(read, 1500);
+    return () => clearInterval(id);
+  }, []);
+
+  React.useEffect(() => {
+    let dead = false;
+    fetch('/owner/api/whereami')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => { if (!dead && j) setGeo(j); })
+      .catch(() => {});
+    return () => { dead = true; };
+  }, []);
+
+  React.useEffect(() => {
+    const tick = () => {
+      const tz = geo?.timezone;
+      try {
+        setClock(new Date().toLocaleTimeString([], {
+          hour: '2-digit', minute: '2-digit', hour12: false,
+          ...(tz ? { timeZone: tz } : {}),
+        }));
+      } catch {
+        setClock(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }));
+      }
+    };
+    tick();
+    const id = setInterval(tick, 15_000);
+    return () => clearInterval(id);
+  }, [geo?.timezone]);
+
+  if (!ids) return null;
+
+  const replayUrl = `https://us.posthog.com/project/436808/replay/${ids.sid}`;
+  const short = (s) => s.length > 14 ? s.slice(0, 8) + '…' + s.slice(-4) : s;
+  const place = geo
+    ? [geo.city, geo.region || geo.country].filter(Boolean).join(', ')
+    : null;
+  const browserTz = (() => {
+    try { return Intl.DateTimeFormat().resolvedOptions().timeZone; }
+    catch { return null; }
+  })();
+
+  return (
+    <div className="ph-card ph-session">
+      <div className="ph-card-head">
+        <span><span className="live-dot"></span> your session — being recorded</span>
+        <a className="ph-link" href={replayUrl} target="_blank" rel="noreferrer"
+           onClick={() => captureOutbound(replayUrl, 'session_replay')}>
+          watch yourself in PostHog ↗
+        </a>
+      </div>
+      {(place || browserTz) && (
+        <div className="ph-whereami">
+          <span className="ph-where-flag">{geo?.country ? flagOf(geo.country) : '🌐'}</span>
+          <span>
+            PostHog sees you in <b>{place || 'an unknown city'}</b>
+            {clock && <> right now · <b>{clock}</b> your time</>}
+            {geo?.timezone && <> · <span className="ph-mono-inline">{geo.timezone}</span></>}
+            <small>{' '}— the same GeoIP a growth funnel captures on first touch.</small>
+          </span>
+        </div>
+      )}
+      <div className="ph-session-grid">
+        <div><div className="ph-k">session_id</div><div className="ph-mono">{short(ids.sid)}</div></div>
+        <div><div className="ph-k">distinct_id</div><div className="ph-mono">{short(ids.did || '')}</div></div>
+        <div><div className="ph-k">replay</div><div className="ph-mono">canvas · network · console</div></div>
+      </div>
+    </div>
+  );
+}
+
+function FunnelOfYou() {
+  const STEPS = [
+    { id: 'loaded',    label: 'loaded the dashboard',     event: '$pageview' },
+    { id: 'milestone', label: 'expanded a timeline milestone', event: 'milestone_expanded' },
+    { id: 'kpi',       label: 'opened a KPI breakdown',   event: 'kpi_clicked' },
+    { id: 'survey',    label: 'answered the survey',      event: 'survey_responded' },
+  ];
+  const [done, setDone] = React.useState({});
+  React.useEffect(() => {
+    const ph = window.posthog;
+    if (!ph || typeof ph.on !== 'function') return;
+    // Autocaptured pageview usually fires before this widget mounts.
+    setDone(d => ({ ...d, loaded: true }));
+    let off;
+    try {
+      off = ph.on('eventCaptured', (e) => {
+        const name = e && (e.event || e.name);
+        const hit = STEPS.find(s => s.event === name);
+        if (hit) setDone(d => ({ ...d, [hit.id]: true }));
+      });
+    } catch {}
+    return () => { try { off && off(); } catch {} };
+  }, []);
+  const n = STEPS.filter(s => done[s.id]).length;
+  return (
+    <div className="ph-card ph-funnel">
+      <div className="ph-card-head">
+        <span>funnel · you ({n}/{STEPS.length})</span>
+        <span className="ph-k">live, client-side · mirrored to an analytics insight</span>
+      </div>
+      <ol className="ph-funnel-list">
+        {STEPS.map((s, i) => (
+          <li key={s.id} className={done[s.id] ? 'on' : ''}>
+            <span className="ph-tick">{done[s.id] ? '✓' : String(i+1).padStart(2,'0')}</span>
+            <span className="ph-step">{s.label}</span>
+            <span className="ph-evt">{s.event ? `event: ${s.event}` : ''}</span>
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
+function PostHogPowered() {
+  const stats = usePhStats();
+  const items = [
+    { label: 'autocapture',           meta: stats?.totalToday != null ? `${stats.totalToday.toLocaleString()} events in the last 24h` : 'every click, form, pageview' },
+    { label: 'session replay',        meta: 'recording you right now · canvas + console' },
+    { label: 'heatmaps',              meta: 'auto, via autocapture' },
+    { label: 'surveys',               meta: '1 active · popover on /owner · 8s delay' },
+    { label: 'feature flags',         meta: 'available · theme stays Owner until you switch' },
+    { label: 'hogql via worker',      meta: 'this widget runs SQL against your PostHog' },
+    { label: 'custom events',         meta: LIVE_CUSTOM_EVENTS.join(' · ') },
+    { label: 'person profiles + geoip', meta: stats?.locations?.length ? `${stats.locations.length} recent cities, enriched` : 'city · country · referrer' },
+    { label: 'cohort signal',         meta: stats?.highIntent != null ? `${stats.highIntent} high-intent visitors (30d) · ≥1 deep interaction` : 'high-intent: ≥1 deep interaction' },
+    { label: 'saved dashboard',       meta: '3 tiles · pageviews · custom events · by country' },
+  ];
+  return (
+    <div className="ph-card ph-powered">
+      <div className="ph-card-head">
+        <span>instrumented with PostHog</span>
+        <a className="ph-link" href={PH_DASHBOARD_URL} target="_blank" rel="noreferrer"
+           onClick={() => captureOutbound(PH_DASHBOARD_URL, 'posthog_dashboard')}>
+          live PostHog dashboard ↗
+        </a>
+      </div>
+      <ul className="ph-powered-list">
+        {items.map((it, i) => (
+          <li key={i}>
+            <span className="ph-pow-tick">✓</span>
+            <span className="ph-pow-label">{it.label}</span>
+            <span className="ph-pow-meta">{it.meta}</span>
+          </li>
+        ))}
+      </ul>
+      <div className="ph-toolbar-hint">
+        Every interaction on this page is a real event. Same instrumentation discipline I'd
+        bring to the Grader funnel — measure the journey, find where owners drop off, ship the fix.
+      </div>
+    </div>
+  );
+}
+
+function LiveLoop() {
+  const stats = usePhStats();
+  const [tick, setTick] = React.useState(0);
+  React.useEffect(() => { capturePhOnce('live_widget_loaded'); }, []);
+  // Cosmetic tick so timestamps re-render every few seconds.
+  React.useEffect(() => {
+    const id = setInterval(() => setTick(t => t + 1), 4000);
+    return () => clearInterval(id);
+  }, []);
+
+  const sparkData = [12, 18, 14, 22, 30, 26, 33, 41, 38, 47, 52, 49, 58, 64];
+
+  // Real recent events from PostHog → ticker rows. Falls back to a small mock
+  // set when stats are pending so the layout never reads empty.
+  const realEvents = (stats?.recentEvents || []).slice(0, 3).map((r) => {
+    const ts = new Date(r.ts).getTime();
+    const ago = Math.max(1, Math.round((Date.now() - ts) / 1000));
+    const when = ago < 60 ? `${ago}s` : ago < 3600 ? `${Math.round(ago/60)}m` : `${Math.round(ago/3600)}h`;
+    const where = r.city ? `Someone in ${r.city}` : 'Someone';
+    return { who: where, what: humanizeEvent(r.e), when };
+  });
+  const fallbackEvents = [
+    { who: 'Someone in Berlin', what: 'expanded the Buffer milestone', when: '2s' },
+    { who: 'Someone in San Francisco', what: 'opened a KPI breakdown', when: '14s' },
+    { who: 'Someone in Cambridge, UK', what: 'loaded the dashboard', when: '31s' },
+  ];
+  const tickerEvents = realEvents.length ? realEvents : fallbackEvents;
+
+  return (
+    <div className="live-grid">
+      <div>
+        <div className="lv-head"><span className="live-dot"></span> live · last 5 min</div>
+        <div className="lv-num signal">{stats?.live ?? '—'}</div>
+        <div className="lv-sub">visitors active right now</div>
+        <div className="lv-spark">
+          <Sparkline data={sparkData} color="#B8442D" />
+        </div>
+        <div className="lv-sub">this week · {stats?.weekUnique ?? '—'} unique · {fmtK(stats?.weekEvents) ?? '—'} events</div>
+        <div className="lv-events">
+          {tickerEvents.map((e, i) => (
+            <div className="lv-event" key={e.who + e.what + i + tick}>
+              <span className="lv-when">{e.when}</span>
+              <span><b>{e.who}</b> {e.what}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div>
+        <div className="lv-head">top referrers · this week</div>
+        <ul className="lv-refs">
+          {(() => {
+            const refs = stats?.referrers?.length ? stats.referrers : [
+              { host: 'owner.com', count: 38 },
+              { host: 'linkedin.com', count: 27 },
+              { host: 'direct', count: 20 },
+              { host: 'news.ycombinator', count: 9 },
+              { host: 'twitter.com', count: 6 },
+            ];
+            const total = refs.reduce((s, r) => s + r.count, 0) || 1;
+            const max = Math.max(...refs.map(r => r.count));
+            return refs.map((r, i) => {
+              const pct = Math.round((r.count / total) * 100);
+              const w = Math.max(8, Math.round((r.count / max) * 100));
+              return (
+                <li key={r.host + i}>
+                  <span>{r.host}</span>
+                  <span className="ref-bar"><i style={{ width: w + '%' }}></i></span>
+                  <span>{pct}%</span>
+                </li>
+              );
+            });
+          })()}
+        </ul>
+      </div>
+      <div>
+        <div className="lv-head">recent locations</div>
+        <div className="lv-cities">
+          {(stats?.locations?.length ? stats.locations : [
+            { country: 'GB', city: 'cambridge' },
+            { country: 'US', city: 'san francisco' },
+            { country: 'DE', city: 'berlin' },
+            { country: 'ZA', city: 'cape town' },
+            { country: 'GB', city: 'london' },
+            { country: 'US', city: 'brooklyn' },
+            { country: 'NL', city: 'amsterdam' },
+            { country: 'CA', city: 'toronto' },
+            { country: 'IE', city: 'dublin' },
+            { country: 'AU', city: 'melbourne' },
+          ]).slice(0, 12).map((l, i) => (
+            <span key={i}>{flagOf(l.country)} {(l.city || '').toLowerCase()}</span>
+          ))}
+        </div>
+        <div className="lv-head" style={{marginTop: 22}}>scroll depth · this page</div>
+        <ul className="lv-refs">
+          <li><span>25%</span><span className="ref-bar"><i style={{width: '94%'}}></i></span><span>94%</span></li>
+          <li><span>50%</span><span className="ref-bar"><i style={{width: '71%'}}></i></span><span>71%</span></li>
+          <li><span>75%</span><span className="ref-bar"><i style={{width: '52%'}}></i></span><span>52%</span></li>
+          <li><span>100%</span><span className="ref-bar"><i style={{width: '34%'}}></i></span><span>34%</span></li>
+        </ul>
+      </div>
+    </div>
+  );
+}
+
+function Survey() {
+  const stats = usePhStats();
+  const [picked, setPicked] = React.useState(null);
+  React.useEffect(() => { capturePhOnce('survey_shown'); }, []);
+
+  // Real tally from PostHog (in-page survey_responded + native popover responses).
+  // Fall back to representative numbers until first responses land.
+  const fallback = [
+    { answer: 'Yes', count: 31 },
+    { answer: 'No', count: 22 },
+    { answer: 'Honestly weirder', count: 47 },
+  ];
+  const raw = stats?.surveyTally?.filter((r) => r.answer && r.answer !== 'null') ?? [];
+  const tallyRows = raw.length ? raw : fallback;
+  const total = tallyRows.reduce((s, r) => s + r.count, 0) || 1;
+
+  return (
+    <div className="survey">
+      <div className="survey-q">
+        <small>survey · live{stats?.surveyTally?.length ? '' : ' · representative numbers until first responses land'}</small>
+        Was this more useful than a resume?
+      </div>
+      <div className="survey-opts">
+        {["Yes", "No", "Honestly weirder"].map((o) => (
+          <button
+            key={o}
+            className={picked === o ? 'picked' : ''}
+            onClick={() => { setPicked(o); capturePh('survey_responded', { answer: o }); }}>
+            {o}
+          </button>
+        ))}
+      </div>
+      {picked && (
+        <div className="survey-tally">
+          <span>logged · thanks</span>
+          <span>aggregate so far →</span>
+          {tallyRows.map((row) => {
+            const pct = Math.round((row.count / total) * 100);
+            return (
+              <span key={row.answer} style={{display:'flex',alignItems:'center',gap:6}}>
+                {row.answer.toLowerCase()} <span className="bar"><i style={{width: pct + '%'}}></i></span> {pct}%
+              </span>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─── Music tab ─── */
+function SunoEmbed({ id, title }) {
+  return (
+    <div className="music-embed">
+      <iframe
+        src={`https://suno.com/embed/${id}`}
+        width="100%"
+        height="240"
+        frameBorder="0"
+        allow="autoplay; encrypted-media; fullscreen"
+        allowFullScreen
+        loading="lazy"
+        referrerPolicy="no-referrer-when-downgrade"
+        title={title}>
+        <a href={`https://suno.com/song/${id}`}>Listen on Suno</a>
+      </iframe>
+    </div>
+  );
+}
+
+function Music() {
+  return (
+    <div className="music">
+      <p className="music-lede">
+        Musician, twenty-plus years in. Music is the
+        thing that taught me to ship: the only way to know if a song works is
+        to play it for someone.
+      </p>
+
+      <section className="music-section" aria-labelledby="music-suno-heading">
+        <div className="music-section-head">
+          <h3 className="music-section-title" id="music-suno-heading">AI music · Suno</h3>
+          <p className="music-section-desc">
+            Melody, lyrics, and Suno prompt by Batsirai — voice demo to finished
+            track with AI production.
+          </p>
+        </div>
+
+        <div className="music-block">
+          <div className="music-block-head">
+            <div className="music-title">Lay Right Here</div>
+            <div className="music-sub">lyrics & melody · batsirai</div>
+          </div>
+          <p className="music-credit">
+            Lyrics and melody by me. I took it from a voice demo to this with AI
+            music on Suno.
+          </p>
+          <SunoEmbed id="b33be6da-3f2e-4273-a377-6dffbe585f5d" title="Lay Right Here" />
+        </div>
+
+        <div className="music-block">
+          <div className="music-block-head">
+            <div className="music-title">Here I Made This</div>
+            <div className="music-sub">lyrics & melody · batsirai</div>
+          </div>
+          <p className="music-credit">
+            Also written by me — same pipeline: my words and tune, prompt-engineered
+            into Suno.
+          </p>
+          <SunoEmbed id="a48701f1-404b-4c0d-b23b-65f31c95205d" title="Here I Made This" />
+        </div>
+      </section>
+
+      <section className="music-section" aria-labelledby="music-live-heading">
+        <div className="music-section-head">
+          <h3 className="music-section-title" id="music-live-heading">
+            Performed · written · recorded
+          </h3>
+          <p className="music-section-desc">
+            Live and studio catalog — performed, written, and recorded by Batsirai.
+          </p>
+        </div>
+
+        <div className="music-block">
+          <div className="music-block-head">
+            <div className="music-title">Batsirai · Spotify</div>
+            <div className="music-sub">recorded catalog</div>
+          </div>
+          <div className="music-embed">
+            <iframe
+              data-testid="embed-iframe"
+              style={{ borderRadius: 0 }}
+              src="https://open.spotify.com/embed/artist/4Lm4Yc59M7v0qXP77AucZD?utm_source=generator"
+              width="100%"
+              height="352"
+              frameBorder="0"
+              allowFullScreen=""
+              allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+              loading="lazy"
+              title="Batsirai on Spotify">
+            </iframe>
+          </div>
+        </div>
+
+        <div className="music-block">
+          <div className="music-block-head">
+            <div className="music-title">Live & Studio Sessions</div>
+            <div className="music-sub">youtube · playlist</div>
+          </div>
+          <div className="music-embed">
+            <iframe
+              src="https://www.youtube.com/embed/videoseries?si=DWmWrKazs_ZIWw7R&amp;list=PL597D63DE8B4003B3"
+              width="100%"
+              height="360"
+              frameBorder="0"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+              referrerPolicy="strict-origin-when-cross-origin"
+              allowFullScreen
+              title="Batsirai · YouTube playlist">
+            </iframe>
+          </div>
+        </div>
+      </section>
+
+      <p className="music-foot">
+        Industry trade press awarded SongSuggest because they trusted my
+        ear, not my dev skills. Same with everything else.
+      </p>
+    </div>
+  );
+}
+
+/* ─── Mini player (floating Suno window) ─── */
+function MiniPlayer({ onClose }) {
+  const [pos, setPos] = React.useState({ x: 0, y: 0 });
+  const [dragging, setDragging] = React.useState(false);
+  const start = React.useRef(null);
+
+  React.useEffect(() => {
+    if (!dragging) return;
+    const onMove = (e) => {
+      const p = e.touches ? e.touches[0] : e;
+      const dx = p.clientX - start.current.px;
+      const dy = p.clientY - start.current.py;
+      setPos({ x: start.current.x + dx, y: start.current.y + dy });
+    };
+    const onUp = () => setDragging(false);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+  }, [dragging]);
+
+  const onDown = (e) => {
+    if (e.target.closest('button') || e.target.closest('iframe')) return;
+    const p = e.touches ? e.touches[0] : e;
+    start.current = { px: p.clientX, py: p.clientY, x: pos.x, y: pos.y };
+    setDragging(true);
+  };
+
+  return (
+    <div className={`miniplayer ${dragging ? 'dragging' : ''}`}
+         style={{ transform: `translate(${pos.x}px, ${pos.y}px)` }}>
+      <div className="mp-bar" onMouseDown={onDown}>
+        <div className="mp-lights">
+          <span className="l1" onClick={onClose} title="close"></span>
+          <span className="l2"></span>
+          <span className="l3"></span>
+        </div>
+        <div className="mp-title">
+          <span className="mp-eq">
+            <i></i><i></i><i></i><i></i>
+          </span>
+          now playing — <b>lay right here</b> · batsirai
+        </div>
+        <button className="mp-close" onClick={onClose} title="hide">×</button>
+      </div>
+      <div className="mp-frame">
+        <iframe
+          src="https://suno.com/embed/b33be6da-3f2e-4273-a377-6dffbe585f5d"
+          width="100%" height="160" frameBorder="0"
+          allow="autoplay; encrypted-media; fullscreen"
+          allowFullScreen loading="lazy"
+          referrerPolicy="no-referrer-when-downgrade"
+          title="Lay Right Here">
+        </iframe>
+      </div>
+      <div className="mp-foot">
+        drag the title bar · click × to hide · ⌘M to toggle
+      </div>
+    </div>
+  );
+}
+
+/* ─── Footer ─── */
+function Foot() {
+  return (
+    <footer className="foot">
+      <div className="foot-why">
+        Built for the <b>Owner Growth PM application</b>, in one day.
+        Source on GitHub. Instrumented with PostHog — the funnel & data work this role is about.
+      </div>
+      <div className="foot-replay">
+        <span className="rec-dot"></span>
+        Every session on this page is recorded — including yours. Wave at the camera.
+      </div>
+      <div className="foot-links">
+        <a href="https://calendar.app.google/LLHzx2oSeHBKtppG7" target="_blank">book a chat</a>
+        <a href="Batsirai-Chada-Resume.pdf" target="_blank">resume.pdf</a>
+        <a href="https://github.com/Batsirai" target="_blank">github · @batsirai</a>
+        <a href="https://www.linkedin.com/in/batsirai-chada/" target="_blank">linkedin · batsirai-chada</a>
+        <a href="https://x.com/batsirai" target="_blank">x · @batsirai</a>
+        <a href="https://alreadylovedkids.com" target="_blank">alreadylovedkids.com</a>
+        <a href="https://batsirai.com" target="_blank">batsirai.com / newsletter</a>
+        <a href="mailto:batsirai@gmail.com">batsirai@gmail.com</a>
+      </div>
+      <div className="foot-credit">
+        batsirai.os v0.3 · last shipped {new Date().toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' })} · owner ❤︎
+      </div>
+    </footer>
+  );
+}
+
+/* batsirai.os — main app */
+
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "palette": "owner",
+  "density": "comfy",
+  "showDesktop": true,
+  "showGrain": true,
+  "showWallpaper": true,
+  "showMiniPlayer": true,
+  "monoEverywhere": false
+}/*EDITMODE-END*/;
+
+const PALETTES = {
+  owner: {
+    label: "Owner",
+    bg: "#F1EBDD", panel: "#FFFFFF", panel2: "#FAF5EA",
+    ink: "#14241C", ink2: "#2E3A33", muted: "#7B8A7E",
+    rule: "rgba(20,36,28,0.14)", ruleSoft: "rgba(20,36,28,0.08)",
+    brick: "#1E9E5A", mustard: "#E0A82E", forest: "#0E5A3A", plum: "#0F766E", signal: "#16A34A",
+    radius: "16px", radiusSm: "10px",
+    border: "1px solid rgba(20,36,28,0.14)",
+    borderSoft: "1px solid rgba(20,36,28,0.08)",
+    shadowHard: "0 14px 44px rgba(16,42,28,0.13), 0 2px 6px rgba(16,42,28,0.05)",
+    shadowSoft: "0 6px 22px rgba(16,42,28,0.09)",
+    shadowCard: "0 2px 12px rgba(16,42,28,0.06)",
+    shadowCardHover: "0 10px 28px rgba(16,42,28,0.11)",
+    shadowButton: "0 1px 2px rgba(16,42,28,0.10)",
+    sans: "'Plus Jakarta Sans', 'Inter', system-ui, -apple-system, sans-serif",
+    mono: "'IBM Plex Mono', 'JetBrains Mono', ui-monospace, monospace",
+  },
+  posthog: {
+    label: "PostHog",
+    bg: "#E1D7C2", panel: "#FBF8F1", panel2: "#F4EFE2",
+    ink: "#141414", ink2: "#2A2723", muted: "#7C7361",
+    rule: "#141414", ruleSoft: "#C9C1AB",
+    brick: "#B8442D", mustard: "#D69F2E", forest: "#3B6B47", plum: "#6B3A5C", signal: "#E85A1E",
+    radius: "0px", radiusSm: "0px",
+    border: "1.5px solid #141414",
+    borderSoft: "1px solid #C9C1AB",
+    shadowHard: "8px 8px 0 #141414",
+    shadowSoft: "4px 4px 0 #141414",
+    shadowCard: "4px 4px 0 #141414",
+    shadowCardHover: "5px 5px 0 #141414",
+    shadowButton: "1.5px 1.5px 0 #141414",
+    sans: "'IBM Plex Sans', 'Inter', system-ui, sans-serif",
+    mono: "'IBM Plex Mono', 'JetBrains Mono', ui-monospace, monospace",
+  },
+  apple: {
+    label: "Apple",
+    bg: "#F5F5F7", panel: "#FFFFFF", panel2: "#FAFAFC",
+    ink: "#1D1D1F", ink2: "#3A3A3C", muted: "#86868B",
+    rule: "rgba(0,0,0,0.08)", ruleSoft: "rgba(0,0,0,0.06)",
+    brick: "#FF453A", mustard: "#FF9F0A", forest: "#30D158", plum: "#BF5AF2", signal: "#0A84FF",
+    radius: "14px", radiusSm: "8px",
+    border: "0.5px solid rgba(0,0,0,0.10)",
+    borderSoft: "0.5px solid rgba(0,0,0,0.06)",
+    shadowHard: "0 12px 40px rgba(0,0,0,0.10), 0 2px 6px rgba(0,0,0,0.04)",
+    shadowSoft: "0 4px 16px rgba(0,0,0,0.06)",
+    shadowCard: "0 2px 8px rgba(0,0,0,0.04)",
+    shadowCardHover: "0 6px 20px rgba(0,0,0,0.08)",
+    shadowButton: "0 1px 2px rgba(0,0,0,0.06)",
+    sans: "-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', system-ui, sans-serif",
+    mono: "'SF Mono', 'JetBrains Mono', ui-monospace, monospace",
+  },
+  terminal: {
+    label: "Terminal",
+    bg: "#0E0E0C", panel: "#161410", panel2: "#1F1C16",
+    ink: "#E8E2D0", ink2: "#C9C1AB", muted: "#8C8470",
+    rule: "#E8E2D0", ruleSoft: "#3A352B",
+    brick: "#39FF88", mustard: "#F5DC5E", forest: "#74F0A1", plum: "#FF8C5A", signal: "#FF5C39",
+    radius: "0px", radiusSm: "0px",
+    border: "1.5px solid #E8E2D0",
+    borderSoft: "1px solid #3A352B",
+    shadowHard: "4px 4px 0 #39FF88",
+    shadowSoft: "2px 2px 0 #39FF88",
+    shadowCard: "2px 2px 0 #39FF88",
+    shadowCardHover: "3px 3px 0 #39FF88",
+    shadowButton: "1px 1px 0 #39FF88",
+    sans: "'IBM Plex Mono', 'JetBrains Mono', ui-monospace, monospace",
+    mono: "'IBM Plex Mono', 'JetBrains Mono', ui-monospace, monospace",
+  },
+};
+
+function App() {
+  const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
+  const [now, setNow] = React.useState(formatNow());
+  const [tab, setTab] = React.useState('readme');
+  const [tagFilter, setTagFilter] = React.useState('ALL');
+  const [terminalId, setTerminalId] = React.useState(null);
+  const [paletteOpen, setPaletteOpen] = React.useState(false);
+  const [paletteReason, setPaletteReason] = React.useState(null);
+  const [cmdkDiscovered, markCmdkDiscovered] = useCmdkDiscovered();
+  const [cmdkNudge, noteCmdkTabVisit] = useCmdkNudge(cmdkDiscovered);
+  const [quitting, setQuitting] = React.useState(false);
+  const [shutdown, setShutdown] = React.useState(false);
+  const winRef = React.useRef(null);
+  const tlApi = React.useRef(null);
+
+  function formatNow() {
+    const d = new Date();
+    return d.toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' });
+  }
+  React.useEffect(() => {
+    const id = setInterval(() => setNow(formatNow()), 30000);
+    return () => clearInterval(id);
+  }, []);
+
+  // palette → css vars
+  React.useEffect(() => {
+    const p = PALETTES[t.palette] || PALETTES.owner;
+    const r = document.documentElement.style;
+    // colors
+    r.setProperty('--bg', p.bg);
+    r.setProperty('--panel', p.panel);
+    r.setProperty('--panel-2', p.panel2);
+    r.setProperty('--ink', p.ink);
+    r.setProperty('--ink-2', p.ink2);
+    r.setProperty('--muted', p.muted);
+    r.setProperty('--rule', p.rule);
+    r.setProperty('--rule-soft', p.ruleSoft);
+    r.setProperty('--brick', p.brick);
+    r.setProperty('--mustard', p.mustard);
+    r.setProperty('--forest', p.forest);
+    r.setProperty('--plum', p.plum);
+    r.setProperty('--signal', p.signal);
+    // shape
+    r.setProperty('--radius', p.radius);
+    r.setProperty('--radius-sm', p.radiusSm);
+    r.setProperty('--border', p.border);
+    r.setProperty('--border-soft', p.borderSoft);
+    r.setProperty('--shadow-hard', p.shadowHard);
+    r.setProperty('--shadow-soft', p.shadowSoft);
+    r.setProperty('--shadow-card', p.shadowCard);
+    r.setProperty('--shadow-card-hover', p.shadowCardHover);
+    r.setProperty('--shadow-button', p.shadowButton);
+    // fonts
+    r.setProperty('--sans', t.monoEverywhere ? p.mono : p.sans);
+    r.setProperty('--mono', p.mono);
+    // theme attribute on body for any conditional CSS
+    document.body.dataset.theme = t.palette;
+  }, [t.palette, t.monoEverywhere]);
+
+  const openPalette = React.useCallback((source = 'shortcut') => {
+    markCmdkDiscovered();
+    setPaletteReason(source === 'exit' || source === 'exit_intent' ? 'exit' : null);
+    setPaletteOpen(true);
+    capturePh('command_palette_opened', { source });
+  }, [markCmdkDiscovered]);
+
+  const closePalette = React.useCallback(() => {
+    setPaletteOpen(false);
+    setPaletteReason(null);
+  }, []);
+
+  // keyboard
+  React.useEffect(() => {
+    const onKey = (e) => {
+      const meta = e.metaKey || e.ctrlKey;
+      if (meta && e.key.toLowerCase() === 'k') { e.preventDefault(); openPalette('shortcut'); }
+      if (meta && e.key.toLowerCase() === 'q') { e.preventDefault(); openPalette('exit'); }
+      if (meta && e.key === '0') { e.preventDefault(); resetWindow(); }
+      if (meta && e.key === 'o') { e.preventDefault(); window.open('Batsirai-Chada-Resume.pdf', '_blank'); }
+      if (meta && e.key === 'm') { e.preventDefault(); setTweak('showMiniPlayer', !t.showMiniPlayer); }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [t.showMiniPlayer, openPalette]);
+
+  // exit intent — mouse leaves toward browser chrome / another tab
+  React.useEffect(() => {
+    if (paletteOpen) return;
+    const onMouseOut = (e) => {
+      if (e.clientY > 12) return;
+      if (e.relatedTarget || e.toElement) return;
+      try {
+        if (sessionStorage.getItem(CMDK_EXIT_INTENT_KEY) === '1') return;
+        sessionStorage.setItem(CMDK_EXIT_INTENT_KEY, '1');
+      } catch {}
+      openPalette('exit_intent');
+    };
+    document.documentElement.addEventListener('mouseout', onMouseOut);
+    return () => document.documentElement.removeEventListener('mouseout', onMouseOut);
+  }, [paletteOpen, openPalette]);
+
+  function resetWindow() {
+    document.querySelector('.window-wrap')?.style.setProperty('transform', 'translate(0,0)');
+  }
+  function snapshot() {
+    setTerminalId('snapshot_unsupported_demo');
+    setTimeout(() => window.print(), 200);
+  }
+  React.useEffect(() => { noteCmdkTabVisit(tab); }, [tab, noteCmdkTabVisit]);
+
+  const goTab = React.useCallback((id) => {
+    setTab(id);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
+
+  function shutdownApp() {
+    setQuitting(true);
+    setTimeout(() => setShutdown(true), 520);
+    setTimeout(() => { setShutdown(false); setQuitting(false); }, 2800);
+  }
+
+  const ctx = {
+    palette: t.palette, setPalette: (v) => setTweak('palette', v),
+    monoEverywhere: t.monoEverywhere, setMono: (v) => setTweak('monoEverywhere', v),
+    showDesktop: t.showDesktop, setShowDesktop: (v) => setTweak('showDesktop', v),
+    showGrain: t.showGrain, setShowGrain: (v) => setTweak('showGrain', v),
+    showWallpaper: t.showWallpaper, setShowWallpaper: (v) => setTweak('showWallpaper', v),
+    showMiniPlayer: t.showMiniPlayer, setShowMiniPlayer: (v) => setTweak('showMiniPlayer', v),
+    tab, setTab: goTab,
+    tagFilter, setTagFilter: (v) => { goTab('timeline'); setTagFilter(v); },
+    jumpTo: (sectId) => {
+      const map = { 's-kpis':'readme', 's-timeline':'timeline', 's-exp':'exp', 's-values':'values', 's-commits':'building', 's-music':'music', 's-live':'live' };
+      goTab(map[sectId] || 'readme');
+    },
+    runScript: (id) => setTerminalId(id),
+    openPalette,
+    cmdkDiscovered,
+    cmdkNudge,
+    resetWindow, snapshot, shutdownApp,
+    _registerTL: (api) => { tlApi.current = api; },
+    tlExpandAll: (v) => tlApi.current?.expandAll(v),
+    jumpToMilestone: (idx, flash) => tlApi.current?.jumpToMilestone(idx, flash),
+  };
+
+  const commands = [
+    { label: 'Open resume.pdf', cat: 'file', run: () => window.open('Batsirai-Chada-Resume.pdf', '_blank') },
+    { label: 'Print dashboard',  cat: 'file', run: () => window.print() },
+    { label: 'Quit application', cat: 'file', run: () => shutdownApp() },
+    { label: 'Run · why_hire.sh',           cat: 'run', run: () => setTerminalId('why_hire') },
+    { label: 'Run · apply_to_owner.sh',     cat: 'run', run: () => setTerminalId('apply') },
+    { label: 'Run · benchmark_vs_role.sh',  cat: 'run', run: () => setTerminalId('benchmark') },
+    { label: 'Run · check_availability.sh', cat: 'run', run: () => setTerminalId('availability') },
+    { label: 'Run · ping_batsirai.sh',      cat: 'run', run: () => setTerminalId('ping') },
+    { label: 'Tab · Bio',         cat: 'go', run: () => goTab('readme') },
+    { label: 'Tab · Timeline',    cat: 'go', run: () => goTab('timeline') },
+    { label: 'Tab · Experiments', cat: 'go', run: () => goTab('exp') },
+    { label: 'Tab · Values',      cat: 'go', run: () => goTab('values') },
+    { label: 'Tab · Building',    cat: 'go', run: () => goTab('building') },
+    { label: 'Tab · Music',       cat: 'go', run: () => goTab('music') },
+    { label: 'Tab · Live',        cat: 'go', run: () => goTab('live') },
+    { label: 'Theme · Owner',    cat: 'view', run: () => setTweak('palette','owner') },
+    { label: 'Theme · Apple',    cat: 'view', run: () => setTweak('palette','apple') },
+    { label: 'Theme · Terminal', cat: 'view', run: () => setTweak('palette','terminal') },
+    { label: 'Toggle desktop icons', cat: 'view', run: () => setTweak('showDesktop', !t.showDesktop) },
+    { label: 'Toggle wallpaper',     cat: 'view', run: () => setTweak('showWallpaper', !t.showWallpaper) },
+    { label: 'Filter · built milestones', cat: 'career', run: () => { goTab('timeline'); setTagFilter('BUILT'); } },
+    { label: 'Filter · founded milestones', cat: 'career', run: () => { goTab('timeline'); setTagFilter('FOUNDED'); } },
+    { label: 'Filter · exited milestones', cat: 'career', run: () => { goTab('timeline'); setTagFilter('EXITED'); } },
+    { label: 'Help · about batsirai.os', cat: 'help', run: () => setTerminalId('about') },
+    { label: 'Help · keyboard shortcuts', cat: 'help', run: () => setTerminalId('keys') },
+  ];
+
+  const leftIcons = [
+    { glyph: "▤", label: "bio", sub: "start here", tab: 'readme',
+      onClick: () => goTab('readme') },
+    { glyph: "⧖", label: "timeline", sub: "15 yrs", acc: "acc-mustard", tab: 'timeline',
+      onClick: () => goTab('timeline') },
+    { glyph: "ƒ", label: "experiments", sub: "7 logged", acc: "acc-brick", tab: 'exp',
+      onClick: () => goTab('exp') },
+    { glyph: "✮", label: "values", sub: "in practice", acc: "acc-plum", tab: 'values',
+      onClick: () => goTab('values') },
+    { glyph: "{}", label: "building", sub: "live commits", acc: "acc-ink", tab: 'building',
+      onClick: () => goTab('building') },
+    { glyph: "♪", label: "music", sub: "preview listen", tab: 'music',
+      onClick: () => goTab('music') },
+    { glyph: "◐", label: "live loop", sub: "this page", acc: "acc-forest", badge: "LIVE", tab: 'live',
+      onClick: () => goTab('live') },
+  ];
+  const rightIcons = [
+    { glyph: "$", label: "resume", sub: ".pdf", acc: "acc-brick", badge: "PDF", href: "Batsirai-Chada-Resume.pdf" },
+    { glyph: "✉", label: "email", sub: "say hi", acc: "acc-plum", href: "mailto:batsirai@gmail.com" },
+    { glyph: "in", label: "linkedin", sub: "batsirai-chada", href: "https://linkedin.com" },
+    { glyph: "↗", label: "github", sub: "@batsirai", acc: "acc-ink", href: "https://github.com" },
+    { glyph: "⌘K", label: "command", sub: "palette", acc: "acc-mustard",
+      badge: cmdkDiscovered ? null : (cmdkNudge ? "→" : "TRY"),
+      onClick: () => openPalette('desktop') },
+  ];
+
+  return (
+    <AppCtx.Provider value={ctx}>
+      <MenuBar now={now} />
+      {t.showGrain && <div className="grain"></div>}
+      <div className={`desktop ${t.showWallpaper ? 'has-wp' : ''}`}>
+        {t.showWallpaper && <div className="wallpaper"></div>}
+        {t.showDesktop && <DesktopIcons side="left" items={leftIcons} activeTab={tab} />}
+        {t.showDesktop && <DesktopIcons side="right" items={rightIcons} activeTab={tab} />}
+
+        {/* original abstract corner illustration — user can drop their own */}
+        <div className="corner-art">
+          <image-slot
+            id="corner-illustration"
+            shape="rect"
+            src="/owner/corner.webp"
+            placeholder="drop a corner illustration"
+            style={{ width: 380, height: 380, display: 'block' }}>
+          </image-slot>
+        </div>
+
+        <DraggableWindow
+          title="career.dashboard — batsirai.chada"
+          meta={<><span>auto-refresh: on</span><CmdkTrigger compact nudge={cmdkNudge && !cmdkDiscovered} /></>}>
+          <div className="window-body">
+            <ProfileSidebar />
+            <TabbedMain />
+          </div>
+          <Foot />
+        </DraggableWindow>
+      </div>
+
+      {terminalId && (
+        <Terminal scriptId={terminalId}
+          onClose={() => setTerminalId(null)}
+          onRun={(id) => setTerminalId(id)} />
+      )}
+      {paletteOpen && (
+        <CommandPalette commands={commands} reason={paletteReason} onClose={closePalette} />
+      )}
+      {t.showMiniPlayer && <MiniPlayer onClose={() => setTweak('showMiniPlayer', false)} />}
+      {quitting && (
+        <style>{`.window-wrap { transform: scale(0.02) translateY(20vh) !important; opacity: 0; transition: transform 0.5s ease-in, opacity 0.5s ease-in; }`}</style>
+      )}
+      {shutdown && (
+        <div className="shutdown">
+          <div>
+            <div className="msg">batsirai.os is shutting down…</div>
+            <small>(it isn't — refresh to come back)</small>
+          </div>
+        </div>
+      )}
+
+      <TweaksPanel title="Tweaks">
+        <TweakSection label="Palette">
+          <TweakSelect
+            label="Theme"
+            value={t.palette}
+            onChange={v => setTweak('palette', v)}
+            options={[
+              { value: 'owner',    label: 'Owner (default)' },
+              { value: 'apple',    label: 'Apple' },
+              { value: 'terminal', label: 'Terminal' },
+            ]} />
+        </TweakSection>
+        <TweakSection label="Chrome">
+          <TweakToggle label="Wallpaper"        value={t.showWallpaper}  onChange={v => setTweak('showWallpaper', v)} />
+          <TweakToggle label="Desktop icons"    value={t.showDesktop}    onChange={v => setTweak('showDesktop', v)} />
+          <TweakToggle label="Mini music player" value={t.showMiniPlayer} onChange={v => setTweak('showMiniPlayer', v)} />
+          <TweakToggle label="Paper grain"      value={t.showGrain}      onChange={v => setTweak('showGrain', v)} />
+          <TweakToggle label="Mono everywhere"  value={t.monoEverywhere} onChange={v => setTweak('monoEverywhere', v)} />
+        </TweakSection>
+      </TweaksPanel>
+    </AppCtx.Provider>
+  );
+}
+
+export default App;
