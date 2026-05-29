@@ -4,7 +4,8 @@
 	"type": "module",
 	"scripts": {
 		"dev:web": "vite",
-		"build": "vite build",
+		"dev:web:owner": "vite --config vite.owner.config.ts",
+		"build": "vite build && vite build --config vite.owner.config.ts && node -e \"require('fs').renameSync('dist/owner/owner.html','dist/owner/index.html')\"",
 		"dev": "npm run build && wrangler dev",
 		"deploy": "npm run build && wrangler deploy",
 		"check": "tsc --noEmit",
